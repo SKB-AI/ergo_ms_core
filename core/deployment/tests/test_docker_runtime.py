@@ -69,6 +69,12 @@ class DockerRuntimeTests(unittest.TestCase):
                 'docker_runtime.BUILD_CACHE_OUTPUT',
                 docker_dir / 'docker-compose.build.generated.yml',
             ), patch('docker_runtime.load_merged_env') as load_env, patch(
+                'docker_runtime.resolve_infra_publish_ports',
+                return_value={},
+            ), patch(
+                'docker_runtime.resolve_docker_app_port',
+                side_effect=lambda preferred, env_key='', warn=False: preferred,
+            ), patch(
                 'lifecycle.docker.ignore.sync_dockerfile_dockerignore',
             ), patch(
                 'lifecycle.modules.catalog.ModuleCatalog.from_env',

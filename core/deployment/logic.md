@@ -194,7 +194,7 @@ TLS: `ERGO_TLS_*`, `ERGO_SSL_CERT`, `ERGO_SSL_KEY` — `env/nginx.env`. CORS: `C
 - `ergoms docker-clean` — down с томами, локальные образы, артефакты compose (подтверждение в терминале; `--yes` — без вопроса)
 - `ergoms docker-up` / `docker-down` / `docker-restart`
 - `ergoms docker-dev` / `docker-prod` — режим из `--mode` или `DOCKER_MODE` в `.env`
-- `ergoms docker-build`, `docker-ps`, `docker-logs`, `docker-migrate`, `docker-shell-api`, `docker-gen-workers`
+- `ergoms docker-build`, `docker-ps`, `docker-logs`, `docker-migrate`, `docker-install-deps`, `docker-install-npm`, `docker-shell-api`, `docker-gen-workers`
 
 Описания для `ergoms help` — раздел `docker` в [`help.manifest.yaml`](help.manifest.yaml).
 
@@ -211,6 +211,7 @@ TLS: `ERGO_TLS_*`, `ERGO_SSL_CERT`, `ERGO_SSL_KEY` — `env/nginx.env`. CORS: `C
 
 - `.compose.env`, `.compose.databases.yaml`
 - `docker-compose.workers.generated.yml`
+- `docker-compose.publish.generated.yml`
 - `init/postgres/02-celery-databases.sql`
 - `nginx/ergo_ms.conf.rendered`
 

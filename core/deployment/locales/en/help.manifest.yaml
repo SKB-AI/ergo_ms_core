@@ -114,6 +114,10 @@ sections:
     summary: Container logs
   - name: docker-migrate
     summary: Migrations inside the api container
+  - name: docker-install-deps
+    summary: Python dependencies (poetry) inside the api container
+  - name: docker-install-npm
+    summary: npm dependencies inside the client/api container
   - name: docker-shell-api
     summary: Interactive shell in the api container
   - name: docker-gen-workers

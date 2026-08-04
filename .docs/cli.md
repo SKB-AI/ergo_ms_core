@@ -204,6 +204,8 @@ ergoms docker-build
 ergoms docker-ps
 ergoms docker-logs -f api
 ergoms docker-migrate
+ergoms docker-install-deps
+ergoms docker-install-npm
 ergoms docker-shell-api
 ergoms docker-gen-workers
 ```
@@ -212,6 +214,8 @@ ergoms docker-gen-workers
 - **`docker-clean --yes`** — полная очистка: контейнеры, тома (включая PostgreSQL), локальные образы, сгенерированные файлы compose
 - **`docker-dev`** / **`docker-prod`** — `docker-up` с `DOCKER_MODE=dev` или `prod`
 - **`docker-migrate`** — миграции и прогрев кэшей внутри контейнера `api`
+- **`docker-install-deps`** — Python-зависимости (poetry) внутри контейнера `api`
+- **`docker-install-npm`** — npm-зависимости внутри стека Docker
 - **`docker-gen-workers`** — пересоздать compose-фрагмент из `celery_workers.yaml`
 
 В `.env` задайте `DOCKER_ENABLED=true`, режим `DOCKER_MODE` и при необходимости profiles (`DOCKER_PROFILE_POSTGRES`, `DOCKER_PROFILE_NGINX`, `DOCKER_PROFILE_JUPYTER`). Подробнее — [docker.md](docker.md) и [`core/deployment/logic.md`](../core/deployment/logic.md#docker-compose).

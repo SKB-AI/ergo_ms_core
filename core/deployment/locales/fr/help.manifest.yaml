@@ -114,6 +114,10 @@ sections:
     summary: Journaux des conteneurs
   - name: docker-migrate
     summary: Migrations dans le conteneur api
+  - name: docker-install-deps
+    summary: Dépendances Python (poetry) dans le conteneur api
+  - name: docker-install-npm
+    summary: Dépendances npm dans le conteneur client/api
   - name: docker-shell-api
     summary: Shell interactif dans le conteneur api
   - name: docker-gen-workers

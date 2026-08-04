@@ -90,9 +90,6 @@ def compose_file_list(mode: str, raw_env: dict[str, str]) -> list[Path]:
     publish = DOCKER_DIR / 'docker-compose.publish.generated.yml'
     if publish.is_file():
         files.append(publish)
-    dns_fix = DOCKER_DIR / 'docker-compose.dns-fix.generated.yml'
-    if dns_fix.is_file():
-        files.append(dns_fix)
     return files
 
 
@@ -116,9 +113,6 @@ def compose_file_list_full() -> list[Path]:
     publish = DOCKER_DIR / 'docker-compose.publish.generated.yml'
     if publish.is_file():
         files.append(publish)
-    dns_fix = DOCKER_DIR / 'docker-compose.dns-fix.generated.yml'
-    if dns_fix.is_file():
-        files.append(dns_fix)
     return files
 
 

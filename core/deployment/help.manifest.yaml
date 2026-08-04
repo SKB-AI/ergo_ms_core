@@ -115,6 +115,10 @@ sections:
     summary: Журнал контейнеров
   - name: docker-migrate
     summary: Миграции внутри контейнера api
+  - name: docker-install-deps
+    summary: Python-зависимости (poetry) внутри контейнера api
+  - name: docker-install-npm
+    summary: npm-зависимости внутри контейнера client/api
   - name: docker-shell-api
     summary: Интерактивная shell в контейнере api
   - name: docker-gen-workers

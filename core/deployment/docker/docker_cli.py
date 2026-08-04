@@ -91,7 +91,8 @@ def cmd_install_deps(args: argparse.Namespace | None = None) -> int:
     mode = getattr(args, 'mode', None) if args is not None else None
     return DeploymentOrchestrator(PROJECT_ROOT.resolve()).docker_install_deps(docker_mode=mode)
 
-def cmd_install_npm_deps(mode: str | None = None) -> int:
+def cmd_install_npm_deps(args: argparse.Namespace | None = None) -> int:
+    mode = getattr(args, 'mode', None) if args is not None else None
     return DeploymentOrchestrator(PROJECT_ROOT.resolve()).docker_install_npm(docker_mode=mode)
 
 def cmd_migrate(args: argparse.Namespace | None = None) -> int:
@@ -180,6 +181,8 @@ def main() -> int:
         ('build', cmd_build),
         ('init', cmd_init),
         ('migrate', cmd_migrate),
+        ('install-deps', cmd_install_deps),
+        ('install-npm', cmd_install_npm_deps),
         ('gen-workers', lambda a: docker_ops.run_generate_workers()),
         ('gen-modules', lambda a: docker_ops.run_generate_modules()),
         ('shell-api', cmd_exec_api_shell),

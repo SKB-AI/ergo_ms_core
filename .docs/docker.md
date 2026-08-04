@@ -107,12 +107,16 @@ ergoms docker-build
 ergoms docker-ps
 ergoms docker-logs -f api
 ergoms docker-migrate
+ergoms docker-install-deps
+ergoms docker-install-npm
 ergoms docker-shell-api
 ergoms docker-gen-workers
 ```
 
 - **`docker-clean --yes`** — остановить стек, удалить тома и локальные образы, очистить `.compose.env` и прочие артефакты в `core/deployment/docker/` (данные PostgreSQL в томе будут потеряны)
 - **`docker-migrate`** — `migrate`, `warmup_caches` внутри контейнера `api` (без `makemigrations`; новые миграции — `ergoms db-makemigrations` на хосте или `ergoms migrate-all`)
+- **`docker-install-deps`** — Python-зависимости (poetry) внутри контейнера `api`
+- **`docker-install-npm`** — npm-зависимости внутри стека Docker
 - **`docker-gen-workers`** — пересоздать `docker-compose.workers.generated.yml` после правки `celery_workers.yaml`
 - **`docker-shell-api`** — интерактивная shell в контейнере API; внутри доступны `ergoms api …` и `ergoms media_api …` (тонкая обёртка, не полный CLI хоста)
 

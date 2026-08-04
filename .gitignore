@@ -86,7 +86,6 @@ __pycache__/
 /core/deployment/docker/docker-compose.modules.generated.yml
 /core/deployment/docker/docker-compose.build.generated.yml
 /core/deployment/docker/docker-compose.publish.generated.yml
-/core/deployment/docker/docker-compose.dns-fix.generated.yml
 /core/deployment/docker/init/postgres/02-celery-databases.sql
 /core/deployment/docker/nginx/ergo_ms.conf.rendered
 /core/deployment/docker/modules.dockerignore.generated

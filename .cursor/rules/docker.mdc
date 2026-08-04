@@ -9,7 +9,7 @@ alwaysApply: false
 
 ## Кратко
 
-- Команды: `docker-init`, `docker-clean`, `docker-up`, `docker-down`, `docker-dev`, `docker-prod`, `docker-migrate`, `docker-gen-workers`, `docker-shell-api`, `docker-logs`, `docker-ps`, `docker-build`
+- Команды: `docker-init`, `docker-clean`, `docker-up`, `docker-down`, `docker-dev`, `docker-prod`, `docker-migrate`, `docker-install-deps`, `docker-install-npm`, `docker-gen-workers`, `docker-shell-api`, `docker-logs`, `docker-ps`, `docker-build`
 - Каталог: `core/deployment/docker/` — compose-файлы, `Dockerfile.python`, `Dockerfile.client`, `docker_cli.py`, `docker_runtime.py`
 - OOP lifecycle: `core/deployment/lifecycle/` — `runner.py`, `DeploymentOrchestrator`, `recipes.py`, шаги compose (`compose_steps.py`); **`docker_cli.py`** делегирует `up`/`down`/`build`/`ps`/`logs`/`init` в `run_recipe('docker-*')`
 - Режимы: **`dev`** (bind-mount, Vite, runserver) и **`prod`** (daphne, `client-build`, опционально nginx)
@@ -105,7 +105,7 @@ python manage.py migrate
 proxy_pass http://127.0.0.1:8000;
 ```
 
-- Коммитить `.compose.env`, `.compose.databases.yaml`, `docker-compose.workers.generated.yml`, `docker-compose.build.generated.yml`, `nginx/ergo_ms.conf.rendered`, `init/postgres/02-celery-databases.sql`, `modules.dockerignore.generated`, `Dockerfile.python.dockerignore`, `Dockerfile.client.dockerignore`
+- Коммитить `.compose.env`, `.compose.databases.yaml`, `docker-compose.workers.generated.yml`, `docker-compose.build.generated.yml`, `docker-compose.publish.generated.yml`, `nginx/ergo_ms.conf.rendered`, `init/postgres/02-celery-databases.sql`, `modules.dockerignore.generated`, `Dockerfile.python.dockerignore`, `Dockerfile.client.dockerignore`
 - Одновременно поднимать portable **redis/nginx на хосте** и те же порты в Docker без смены конфигурации
 - Создавать отдельный `.venv` в Dockerfile вместо `POETRY_VIRTUALENVS_PATH=/app/virtual_env/python` — см. [`virtual-env.mdc`](virtual-env.mdc)
 
