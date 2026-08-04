@@ -299,12 +299,17 @@ function Stop-RedisProcess {
     }
 }
 
+function Get-RedisLogPath {
+    param([string]$Root)
+    return Join-Path $Root 'logs\redis.log'
+}
+
 function Start-RedisProcess {
     param([string]$Root)
 
     if (-not (Test-RedisInstalled -Root $Root)) {
         Write-ErgomsMessage -Key 'error_not_installed_run' -Color Red -Stderr -Param @{ name = 'Redis'; cmd = 'ergoms install-redis' }
-        return
+        exit 1
     }
 
     $service = Get-Service -Name $script:RedisServiceName -ErrorAction SilentlyContinue
@@ -316,22 +321,38 @@ function Start-RedisProcess {
         return
     }
 
-    Stop-RedisProcess -Root $Root -Quiet
+    # Уже отвечает — не перезапускаем (избегаем гонки warmup + start-redis-dev).
+    if (Test-RedisPing -Root $Root) {
+        Write-ErgomsMessage -Key 'ok_started' -Color Green -Param @{ name = 'Redis' }
+        return
+    }
+
+    if (Test-RedisProcessRunning) {
+        Stop-RedisProcess -Root $Root -Quiet
+    }
 
     $redisDir = Get-RedisDir -Root $Root
     $serverExe = Get-RedisServerExe -Root $Root
-    $confPath = Get-RedisConfPath -Root $Root
 
     Write-ErgomsMessage -Key 'arrow_starting' -Color Cyan -Param @{ name = 'Redis' }
     # MSYS2-сборка redis-windows не принимает абсолютный путь к конфигу (C:\...).
     Start-Process -FilePath $serverExe -ArgumentList 'conf\redis.conf' -WindowStyle Hidden -WorkingDirectory $redisDir
-    Start-Sleep -Seconds 2
 
-    if (Test-RedisPing -Root $Root) {
+    $ready = $false
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Milliseconds 500
+        if (Test-RedisPing -Root $Root) {
+            $ready = $true
+            break
+        }
+    }
+
+    if ($ready) {
         Write-ErgomsMessage -Key 'ok_started' -Color Green -Param @{ name = 'Redis' }
     }
     else {
-        Write-ErgomsMessage -Key 'error_start_failed_check_logs' -Color Red -Stderr -Param @{ name = 'Redis'; path = (Join-Path $redisDir 'logs\redis.log') }
+        Write-ErgomsMessage -Key 'error_start_failed_check_logs' -Color Red -Stderr -Param @{ name = 'Redis'; path = (Get-RedisLogPath -Root $Root) }
+        exit 1
     }
 }
 
