@@ -1,0 +1,12 @@
+# Сгенерировано sync_vscode_logs_services.py — не редактировать вручную.
+# Источник: .vscode/logs-services.yaml + ERGO_PROXY / ERGO_BROKER (или legacy NGINX_ENABLED / REDIS_ENABLED)
+
+services:
+  ergo_ms_api_dev:
+    description: "Django API server"
+  ergo_ms_client_dev:
+    description: "Vue.js client dev server"
+  ergo_ms_media_api:
+    description: "Media API (CDN / file server)"
+  ergo_ms_celery_beat:
+    description: "Celery Beat scheduler"

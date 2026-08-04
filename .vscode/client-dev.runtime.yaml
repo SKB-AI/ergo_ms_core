@@ -1,0 +1,6 @@
+# Сгенерировано sync_vscode_logs_services.py — не редактировать вручную.
+# Клиент / nginx для Start All Services (после API).
+
+services:
+  client:
+    description: "Vue.js client dev server"

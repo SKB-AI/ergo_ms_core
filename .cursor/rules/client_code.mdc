@@ -1,5 +1,5 @@
 ---
-description: Клиент Vue — i18n ru/en, toast, confirm, импорты, компоненты ядра
+description: Клиент Vue — i18n ru/en, toast, undo toast, confirm, импорты, компоненты ядра
 alwaysApply: false
 ---
 # Клиент (Vue)
@@ -53,23 +53,69 @@ showSuccess(tGlobal('common.saved'))
 Единый слой — `@/js/utils/toast.js`. **Не** импортируй `vue-toastification` напрямую (кроме ядра: `main.js`, `toast.js`).
 
 ```javascript
-import { useToast, showSuccess, showError, handleApiError } from '@/js/utils/toast.js'
+import { useToast, showSuccess, showError, showUndoableSuccess, handleApiError } from '@/js/utils/toast.js'
+import { clientEnv } from '@/js/clientEnv.js'
 import { tGlobal } from '@/i18n/index.js'
 
 // в setup / composable
 const toast = useToast()
 toast.success(tGlobal('common.saved'))
-toast.error(tGlobal('common.somethingWentWrong'))
 
 // вне setup (handlers, utils)
 showSuccess(tGlobal('common.success'))
 showError(tGlobal('errors.api.generic'))
 
+// success с одноразовой отменой (см. audit.mdc — журнал «Хранение отмен»)
+showUndoableSuccess(tGlobal('common.saved'), {
+  onUndo: async () => { /* откат */ },
+  undoAudit: {
+    kind: '<name>.item.restore',
+    label: tGlobal('myModule.undoKinds.restore'),
+    entityLabel: item.name,
+    sourceModule: '<name>',
+  },
+  group: 'myModule.restore',              // опц.: стек отмен внутри группы
+  kind: '<name>.item.restore',            // опц.: для batch «Отменить все»
+  stackMax: clientEnv.toastUndoStackMax,  // опц.: глубина стека группы (мин. 1)
+  batchUndo: async (oldestEntry) => { /* откат к baseline */ }, // опц.
+  batchContext: { /* снимок для batchUndo */ },
+  onStackEmpty: () => toast.success(tGlobal('common.undoDone')),
+})
+
 // ошибки API
 try { ... } catch (e) { await handleApiError(e, tGlobal('errors.api.generic')) }
 ```
 
-Полезные функции: `showWarning`, `showInfo`, `showToast`, `normalizeToastMessage`, `getToast`, `showValidationError`, `showSaveSuccess`, `showDeleteSuccess`.
+Полезные функции: `showWarning`, `showInfo`, `showToast`, `normalizeToastMessage`, `getToast`,
+`showValidationError`, `showSaveSuccess`, `showDeleteSuccess`.
+
+### Undo в toast (стек)
+
+Отмена живёт **только** во всплывающем уведомлении и в журнале аудита после успешного
+отката. Отдельной UI-панели «неотменённые действия» **нет**.
+
+| Поведение | Правило |
+|---|---|
+| Таймер | `10` с (`UNDOABLE_SUCCESS_TIMEOUT` в `toast.js`) |
+| Закрытие по таймауту / без «Отменить» | весь стек **группы** сбрасывается (`deleteUndoGroup`) |
+| «Отменить» | откатывает верх стека; следующий шаг снова получает полный таймер |
+| `group` + `stackMax` | стек **на группу**; без `stackMax` — глубина `1` |
+| `batchUndo` + count > 1 | вторая кнопка «Отменить все (N)» (с confirm) |
+| Реестр | in-memory `undoRegistry.js` — только для toast/стека, не персистентный |
+
+Эталон групп тем: `THEME_UNDO_GROUPS` в
+`core/client/src/core/cms/adp/settings/themeEditor/themeUndoGroups.js`
+(стек с `stackMax` — у `themes.siteDefault`; остальные группы обычно depth `1`).
+
+**Отмена и аудит:** запись в журнал — только через `undoAudit` / `reportUndo` из
+[`audit.mdc`](audit.mdc). Не вызывай доменные `record-undo` эндпоинты.
+
+**Env** (корневой `.env`, поля в `clientEnv.js`; после правки — пересборка/перезапуск клиента):
+
+| Переменная | По умолчанию | Назначение |
+|---|---|---|
+| `CLIENT_TOAST_UNDO_ENABLED` | `true` | кнопка «Отменить» во всплывающем success |
+| `CLIENT_TOAST_UNDO_STACK_MAX` | `3` | глубина стека отмен при `stackMax` (мин. 1) |
 
 Разбор ошибок API: `@/js/utils/apiErrorMessage.js` (`extractApiError`, `parseApiErrorData`); toast — `handleApiError`.
 
@@ -173,6 +219,7 @@ watchState(() => {
 | Компоненты UI | [`components.mdc`](components.mdc) |
 | Темы, шрифты | [`themes.mdc`](themes.mdc) |
 | Модалки, confirm | [`modal-center.mdc`](modal-center.mdc) |
+| Журнал отмен (`undoAudit`, `reportUndo`) | [`audit.mdc`](audit.mdc) |
 | Ошибки API | [`log-error.mdc`](log-error.mdc) |
 | Права маршрутов (UX) | [`permission_rules.mdc`](permission_rules.mdc) |
 | Модули, мост | [`modules.mdc`](modules.mdc) |
