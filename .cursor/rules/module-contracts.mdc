@@ -108,6 +108,7 @@ JWT session claims **не зашиты в ядре** — их деклариру
 | `header.userMenu.items` | group | Пункты UserMenu | [`headerUserMenu.js`](../../core/client/src/integrations/headerUserMenu.js) |
 | `apps.menu.items` | group | Пункты меню приложений (AppsMenu) | [`appsMenu.js`](../../core/client/src/integrations/appsMenu.js) |
 | `shell.floating_widgets` | group | Плавающие виджеты оболочки (мини-чат и т.п.) | [`floatingWidgets.js`](../../core/client/src/integrations/floatingWidgets.js) |
+| `shell.sidebar_brand` | group | Опциональная подмена бренда в шапке сайдбара / mobile header (`{ id, component, order?, match?, to?, measureText? }`); без match — `SiteWordmark` | [`sidebarBrand.js`](../../core/client/src/integrations/sidebarBrand.js) |
 
 Хелперы: [`sessionScopedModuleContext.js`](../../core/client/src/integrations/sessionScopedModuleContext.js), [`sessionScopeGuard.js`](../../core/client/src/js/session/sessionScopeGuard.js), [`sessionScopeEntryRoutes.js`](../../core/client/src/integrations/sessionScopeEntryRoutes.js), [`sessionScopeGating.js`](../../core/client/src/integrations/sessionScopeGating.js).
 

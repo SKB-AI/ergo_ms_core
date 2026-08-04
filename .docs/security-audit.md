@@ -121,6 +121,8 @@ ADMIN_PASSWORD=admin
 
 **Как исправить.** Ввести срок годности кода и счётчик неудачных попыток с блокировкой, подключить отдельное ограничение частоты на проверку кода, вызывать отзыв сессий при любой смене пароля с сохранением текущей сессии инициатора.
 
+**Исправлено.** Код восстановления: TTL 15 минут (`API_PASSWORD_RESET_CODE_TTL_MINUTES`), максимум 5 неверных попыток (`API_PASSWORD_RESET_CODE_MAX_ATTEMPTS`), единый безопасный ответ при ошибке/истечении/блокировке. На `VerifyConfirmationCodeView` подключены `AnonRateThrottle` + `ScopedRateThrottle` (`password_reset`). После самостоятельного сброса — полный `revoke_user_auth`; после смены пароля в профиле — revoke с сохранением текущего устройства (`except_device_id`). Публичные настройки отдают `password_reset_available` только если фича включена и исходящая почта готова; иначе ссылка «Забыл пароль» скрыта, Send отвечает 403 без попытки отправки.
+
 ### В3. Мессенджер разрешает доступ по умолчанию
 
 **Где:** [core/api/src/core/messenger/access.py](../core/api/src/core/messenger/access.py), строки 30–32.
@@ -135,6 +137,8 @@ ADMIN_PASSWORD=admin
 
 **Как исправить.** Изменить значение по умолчанию на запрет и требовать явного объявления метода у моделей, которые подключают обсуждения.
 
+**Исправлено.** Без callable `has_messenger_access` на объекте доступ запрещён (`return False`). Исключение в методе модели тоже даёт отказ (fail-closed). REST, WebSocket и SSE topic используют одну функцию в `access.py`.
+
 ### В4. Проверка токена на WebSocket слабее, чем в REST
 
 **Где:** [core/api/src/core/cms/adp/ws_auth.py](../core/api/src/core/cms/adp/ws_auth.py), строки 20–32; [core/api/src/config/asgi.py](../core/api/src/config/asgi.py), строки 35–40.
@@ -144,6 +148,8 @@ ADMIN_PASSWORD=admin
 **Чем опасно.** На WebSocket принимается в том числе refresh-токен, а отзыв сессии устройства на соединение не влияет. Отсутствие проверки источника означает, что соединение может быть инициировано страницей на постороннем домене; сам по себе токен при этом остаётся необходимым, но защитный слой, предусмотренный Channels, не задействован.
 
 **Как исправить.** Использовать `AccessToken` вместо `UntypedToken`, повторить проверку устройства из `DeviceBoundJWTAuthentication` и обернуть маршрутизатор WebSocket в `AllowedHostsOriginValidator`.
+
+**Исправлено.** `user_from_jwt_token` принимает только `AccessToken` с обязательным `device_id` и активной сессией устройства (как REST). В `asgi.py` WebSocket обёрнут в `AllowedHostsOriginValidator`.
 
 ### В5. Redis работает без пароля, а в Docker порт публикуется наружу
 
@@ -165,6 +171,7 @@ ADMIN_PASSWORD=admin
 
 **Как исправить.** Включить ротацию с занесением предыдущего токена в чёрный список, заносить refresh-токен в чёрный список при выходе, запретить отключение сроков жизни вне режима разработки.
 
+**Исправлено.** `ROTATE_REFRESH_TOKENS=True` при `BLACKLIST_AFTER_ROTATION=True`; после ротации `DeviceBoundTokenRefreshSerializer` перепривязывает `UserDevice.outstanding_token_jti` через `bind_device_to_refresh_token`. `LogoutView` вызывает `revoke_logout_session` (устройство → blacklist jti), оставаясь идемпотентным (204 + очистка cookie). `API_JWT_LIFETIME_ENABLED=false` в production прерывает запуск (`ImproperlyConfigured`). Контроли `token.lifetime_required`, `token.rotate_refresh`, `token.revoke_on_logout` на уровне `standard` отражают это поведение.
 ### В7. В production могут остаться разрешения источников для разработки
 
 **Где:** [core/api/src/config/settings/cors.py](../core/api/src/config/settings/cors.py), строки 20–37.
@@ -174,6 +181,8 @@ ADMIN_PASSWORD=admin
 **Чем опасно.** На сервере, где переменную забыли заполнить, браузер разрешит запросы с учётными данными со страницы, открытой на локальном адресе разработчика. Это ослабляет защиту от запросов с посторонних источников.
 
 **Как исправить.** Подставлять адреса для разработки только при `ERGO_ENV=development`, а в production требовать явный список и прерывать запуск при его отсутствии.
+
+**Исправлено.** Localhost-origins подставляются только при `is_development()`. В production без `CORS_ALLOWED_ORIGINS` и без `CORS_ALLOWED_ORIGIN_REGEXES` запуск прерывается (`ImproperlyConfigured`). При nginx публичный origin по-прежнему добавляется через `effective_cors_origins`, без смеси с localhost.
 
 ---
 
@@ -213,15 +222,17 @@ ADMIN_PASSWORD=admin
 
 ### С9. Шаблон `.env` ослабляет настройки по сравнению с кодом
 
-| Параметр | Значение в коде | Значение в шаблоне |
+| Параметр | Значение в коде | Значение в шаблоне (было) |
 |---|---|---|
-| `API_THROTTLE_RATES_ANON` | `10/minute` | `100/minute` |
+| `API_THROTTLE_RATES_ANON` | `10/minute` | `100/minute` → затем `20/minute` |
 | `API_PASSWORD_MIN_LENGTH` | 8 | 6 |
 | `API_REFRESH_TOKEN_LIFETIME` | 1440 | 60 |
 | `API_SWAGGER_ENABLED` | включено только в разработке | `true` |
 | `API_DRF_BROWSABLE_ENABLED` | включено только в разработке | `true` |
 
 Пароль по умолчанию не требует заглавной буквы и специального символа, регистрация открыта для всех. Шаблон, скопированный на сервер без правки, оставляет открытыми документацию API и просмотр эндпоинтов в браузере.
+
+**Исправлено.** В `.env.example`: throttle anon/user как в коде (`10/minute`, `5000/hour`), пароль min 8 / max 128, Swagger и DRF browsable не заданы принудительно (дефолт кода по `ERGO_ENV`), CORS-комментарии требуют явный список в production, регистрация `open` с предупреждением для сервера. Refresh 60 минут оставлен намеренно (короче кодового запасного). Контроли `api.docs_exposure` / `password.policy` на уровне `standard`.
 
 ### С10. Двухфакторная аутентификация существует только как признак в профиле
 
@@ -276,7 +287,7 @@ ADMIN_PASSWORD=admin
 | В3 | `messenger.access_default` | `standard` |
 | В4 | `realtime.token_type`, `realtime.origin_validation`, `realtime.device_binding` | `standard` |
 | В5 | `broker.redis_password` | `hardened` |
-| В6 | `token.lifetime_required`, `token.rotate_refresh`, `token.revoke_on_logout` | `standard` / `hardened` |
+| В6 | `token.lifetime_required`, `token.rotate_refresh`, `token.revoke_on_logout` | `standard` |
 | В7 | `cors.explicit_origins` | `standard` |
 | С1 | `api.task_status_owner` | `standard` |
 | С2 | `csrf.trusted_origins` | `hardened` |
