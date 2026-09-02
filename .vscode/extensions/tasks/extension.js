@@ -105,6 +105,11 @@ const ERGO_SYNC_PROVIDER = 'ergo-sync';
 /** Targets where terminal name comes from service description (not nameTemplate). */
 const ERGO_SYNC_USE_DESCRIPTION = new Set([
     'logs-all',
+    'db-dev',
+    'redis-dev',
+    'meilisearch-dev',
+    'client-dev',
+    'optional-services',
     'module-start',
     'module-logs',
 ]);
@@ -347,21 +352,50 @@ function getWorkspaceRoot() {
 }
 
 
+function trackGroupItem(group, item) {
+    if (!group) {
+        return;
+    }
+    if (!taskGroups.has(group)) {
+        taskGroups.set(group, []);
+    }
+    taskGroups.get(group).push(item);
+}
+
+function terminateTrackedItem(item) {
+    if (!item) {
+        return;
+    }
+    if (item.terminal) {
+        try {
+            item.terminal.dispose();
+        } catch (_) {}
+        return;
+    }
+    if (item.execution) {
+        try {
+            item.execution.terminate();
+        } catch (_) {}
+    }
+}
+
 /**
- * Создаёт и запускает задачу
+ * Создаёт и запускает задачу (VS Code Task — видно в Running Tasks).
  */
 async function runTask(name, command, cwd, group, stopCommand) {
-    const taskDefinition = {
-        type: 'shell',
-        task: name
-    };
-
     const workspaceRoot = cwd || getWorkspaceRoot();
     const env = workspaceRoot
         ? withErgomsPath({ ...process.env }, workspaceRoot)
         : { ...process.env };
-    
+
     const { executable, args, options } = osAbstraction.getProcessExecution(command, cwd, env);
+    // type/command/args должны совпадать с ProcessExecution, иначе редактор
+    // пишет «neither specifies a command nor a dependsOn» на каждый дочерний процесс.
+    const taskDefinition = {
+        type: 'process',
+        command: executable,
+        args,
+    };
     const processExecution = new vscode.ProcessExecution(executable, args, options);
 
     const task = new vscode.Task(
@@ -372,6 +406,7 @@ async function runTask(name, command, cwd, group, stopCommand) {
         processExecution,
         []
     );
+    task.hide = true;
 
     task.presentationOptions = {
         reveal: vscode.TaskRevealKind.Always,
@@ -383,21 +418,41 @@ async function runTask(name, command, cwd, group, stopCommand) {
     };
 
     const execution = await vscode.tasks.executeTask(task);
-    
-    // Сохраняем в группу
-    if (group) {
-        if (!taskGroups.has(group)) {
-            taskGroups.set(group, []);
-        }
-        taskGroups.get(group).push({
-            execution,
-            stopCommand: stopCommand || null,
-            cwd,
-            name
-        });
-    }
-    
+    trackGroupItem(group, {
+        execution,
+        stopCommand: stopCommand || null,
+        cwd,
+        name
+    });
     return execution;
+}
+
+/**
+ * Обычный integrated terminal — без Task API, без toast/Running Tasks.
+ */
+async function runInTerminal(name, command, cwd, group, stopCommand) {
+    const workspaceRoot = cwd || getWorkspaceRoot();
+    const env = workspaceRoot
+        ? withErgomsPath({ ...process.env }, workspaceRoot)
+        : { ...process.env };
+
+    const { executable, args, options } = osAbstraction.getProcessExecution(command, cwd, env);
+    const terminal = vscode.window.createTerminal({
+        name,
+        cwd: (options && options.cwd) || cwd || workspaceRoot || undefined,
+        env: (options && options.env) || env,
+        shellPath: executable,
+        shellArgs: args
+    });
+    // preserveFocus — не дёргать фокус на каждый из N логов
+    terminal.show(true);
+    trackGroupItem(group, {
+        terminal,
+        stopCommand: stopCommand || null,
+        cwd,
+        name
+    });
+    return terminal;
 }
 
 /**
@@ -406,8 +461,24 @@ async function runTask(name, command, cwd, group, stopCommand) {
  */
 const STOP_DEV_SCRIPTS = {
     'stop-redis-dev': path.join('core', 'deployment', 'scripts', 'stop_redis_if_enabled.py'),
+    'stop-meilisearch-dev': path.join('core', 'deployment', 'scripts', 'stop_meilisearch_if_enabled.py'),
     'stop-nginx-dev': path.join('core', 'deployment', 'scripts', 'stop_nginx_if_enabled.py'),
     'stop-client-dev': path.join('core', 'deployment', 'scripts', 'stop_client_if_enabled.py')
+};
+
+/** Модульные stop-команды ergoms → deployment-скрипт (без обёртки ergoms). */
+const STOP_MODULE_SCRIPTS = {
+    'ollama_framework:stop-ollama': path.join(
+        'modules',
+        'ollama_framework',
+        'deployment',
+        'stop_ollama.py'
+    )
+};
+
+/** Порты, которые при stop нужно снять с auto-forward Cursor/VS Code. */
+const STOP_MODULE_PORTS = {
+    'ollama_framework:stop-ollama': 11434
 };
 
 function resolvePythonExecutable(workspaceRoot) {
@@ -429,14 +500,61 @@ function resolvePythonExecutable(workspaceRoot) {
 }
 
 /**
+ * Best-effort: снять проброс порта в панели Ports (Cursor/VS Code).
+ */
+function requestCloseForwardedPort(port) {
+    if (!port || !vscode.commands) {
+        return;
+    }
+    const hosts = ['localhost', '127.0.0.1'];
+    const commandIds = [
+        'remote.tunnel.close',
+        'tunnel.close',
+        'forwardedPorts.close',
+        'ports.stopForwarding'
+    ];
+    for (const commandId of commandIds) {
+        for (const host of hosts) {
+            const payloads = [
+                { host, port },
+                { remoteHost: host, remotePort: port },
+                { id: `${host}:${port}` },
+                port
+            ];
+            for (const args of payloads) {
+                vscode.commands.executeCommand(commandId, args).then(
+                    () => {},
+                    () => {}
+                );
+            }
+        }
+    }
+}
+
+/**
  * Преобразует stop-команду в быстрый spawn (python script) или shell fallback.
  */
 function resolveStopInvocation(stopCommand, workspaceRoot) {
     const trimmed = String(stopCommand || '').trim();
-    const match = trimmed.match(/^ergoms\s+(stop-[a-z0-9-]+-dev)\s*$/i);
-    if (match && workspaceRoot) {
-        const scriptRel = STOP_DEV_SCRIPTS[match[1].toLowerCase()];
-        const pythonExe = resolvePythonExecutable(workspaceRoot);
+    const pythonExe = workspaceRoot ? resolvePythonExecutable(workspaceRoot) : null;
+    const devMatch = trimmed.match(/^ergoms\s+(stop-[a-z0-9-]+-dev)\s*$/i);
+    if (devMatch && workspaceRoot) {
+        const scriptRel = STOP_DEV_SCRIPTS[devMatch[1].toLowerCase()];
+        if (scriptRel && pythonExe) {
+            return {
+                executable: pythonExe,
+                args: [path.join(workspaceRoot, scriptRel)],
+                envExtra: {
+                    PYTHONIOENCODING: 'utf-8',
+                    PYTHONUTF8: '1'
+                }
+            };
+        }
+    }
+    const moduleMatch = trimmed.match(/^ergoms\s+([a-z0-9_]+):([a-z0-9-]+)\s*$/i);
+    if (moduleMatch && workspaceRoot) {
+        const moduleKey = `${moduleMatch[1]}:${moduleMatch[2]}`.toLowerCase();
+        const scriptRel = STOP_MODULE_SCRIPTS[moduleKey];
         if (scriptRel && pythonExe) {
             return {
                 executable: pythonExe,
@@ -463,6 +581,15 @@ function resolveStopInvocation(stopCommand, workspaceRoot) {
 function runStopCommand(stopCommand, cwd) {
     if (!stopCommand) {
         return;
+    }
+    const trimmed = String(stopCommand || '').trim();
+    const moduleMatch = trimmed.match(/^ergoms\s+([a-z0-9_]+):([a-z0-9-]+)\s*$/i);
+    if (moduleMatch) {
+        const moduleKey = `${moduleMatch[1]}:${moduleMatch[2]}`.toLowerCase();
+        const forwardedPort = STOP_MODULE_PORTS[moduleKey];
+        if (forwardedPort) {
+            requestCloseForwardedPort(forwardedPort);
+        }
     }
     const { spawnSync } = require('child_process');
     const workspaceRoot = cwd || getWorkspaceRoot();
@@ -625,7 +752,7 @@ async function executeMultiTerminalTask(task) {
     }
     
     if (tasks.length === 0) {
-        // Пустой список нормален для Redis Dev при REDIS_ENABLED=false —
+        // Пустой список нормален для Redis/Meilisearch Dev при выключенном флаге —
         // не пугаем toast'ом «Нет задач для запуска» в Start All Services.
         if (!silentEmpty) {
             vscode.window.showWarningMessage('Нет задач для запуска');
@@ -633,18 +760,12 @@ async function executeMultiTerminalTask(task) {
         return;
     }
 
-    if (String(group || '').startsWith('logs')) {
-        vscode.window.showInformationMessage(
-            `ERGO MS Logs: открываю ${tasks.length} терминал(ов)…`
-        );
-    }
-    
+    const launchAsTerminal = definition.launchAs === 'terminal';
+
     // Останавливаем старые задачи этой группы
     if (taskGroups.has(group)) {
         for (const item of taskGroups.get(group)) {
-            try {
-                item.execution.terminate();
-            } catch (e) {}
+            terminateTrackedItem(item);
             runStopCommand(item.stopCommand, item.cwd || cwd);
         }
         taskGroups.set(group, []);
@@ -652,7 +773,11 @@ async function executeMultiTerminalTask(task) {
     
     // Запускаем задачи
     for (const t of tasks) {
-        await runTask(t.name, t.command, t.cwd, group, t.stopCommand);
+        if (launchAsTerminal) {
+            await runInTerminal(t.name, t.command, t.cwd, group, t.stopCommand);
+        } else {
+            await runTask(t.name, t.command, t.cwd, group, t.stopCommand);
+        }
         await sleep(delay);
     }
 }
@@ -663,12 +788,10 @@ async function executeMultiTerminalTask(task) {
 function stopAllTasks() {
     let count = 0;
     
-    for (const [group, executions] of taskGroups) {
-        for (const item of executions) {
-            try {
-                item.execution.terminate();
-                count++;
-            } catch (e) {}
+    for (const [, items] of taskGroups) {
+        for (const item of items) {
+            terminateTrackedItem(item);
+            count++;
             runStopCommand(item.stopCommand, item.cwd);
         }
     }

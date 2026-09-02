@@ -14,7 +14,11 @@ alwaysApply: true
 - схемы архитектуры, диаграммы «по коду»;
 - комментарии-docstring ради документирования уже понятного кода.
 
-Исключение: правки **существующей** документации или краткие README в `core/api/`, `core/client/`, `core/media_api/` (точки входа со ссылками на `.docs/`).
+**Исключения (делать без отдельной просьбы):**
+
+- правки **существующей** документации;
+- краткие README в `core/api/`, `core/client/`, `core/media_api/` (точки входа со ссылками на `.docs/`);
+- **документация модуля** при правках в `modules/<name>/` — `AGENTS.md`, `.cursor/rules/*.mdc`, `README.md`, `ergoms.help.yaml` по чеклисту [`module-docs.mdc`](module-docs.mdc).
 
 ## Где что лежит
 
@@ -22,9 +26,13 @@ alwaysApply: true
 |-----------|---------|
 | Люди | [`.docs/`](../../.docs/) — оглавление в [README.md](../../README.md#документация) |
 | Агент Cursor | [`.cursor/rules/`](.) — см. [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc) |
+| Модуль (агент + люди) | `modules/<name>/AGENTS.md`, `.cursor/rules/`, `README.md` — [`module-docs.mdc`](module-docs.mdc) |
 | Generate commit message (✨) | [`.cursorrules`](../../.cursorrules) в корне — commit на русском; не путать с `.mdc` |
 | Развёртывание | [`core/deployment/logic.md`](../../core/deployment/logic.md) |
+| Сообщество GitHub (организация) | [`core/.github/`](../../core/.github/) — submodule; синхронизация с `.docs/` — [`github-org-community.mdc`](github-org-community.mdc) |
+
+При правке онбординга, безопасности или поддержки в `.docs/` / README — проверь, не устарели ли краткие тексты в `core/.github` (см. [`github-org-community.mdc`](github-org-community.mdc)).
 
 ## Как писать
 
-Стиль, структура, язык, примеры — в [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc).
+Стиль, структура, язык, примеры — в [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc). Документация модулей — [`module-docs.mdc`](module-docs.mdc).

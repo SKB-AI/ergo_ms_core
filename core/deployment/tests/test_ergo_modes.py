@@ -8,6 +8,7 @@ from ergo_modes import (  # noqa: E402
     effective_docker_enabled,
     effective_docker_profile_jupyter,
     effective_docker_profile_postgres,
+    effective_jupyter_behind_nginx,
     effective_nginx_enabled,
     effective_redis_enabled,
     env_bool,
@@ -43,6 +44,27 @@ class ErgoModesTests(unittest.TestCase):
         self.assertTrue(effective_docker_profile_postgres({'ERGO_DB': 'portable_postgres'}))
         self.assertTrue(effective_docker_profile_jupyter({'ERGO_JUPYTER': 'local'}))
         self.assertFalse(effective_docker_profile_jupyter({'ERGO_JUPYTER': 'none'}))
+
+    def test_jupyter_behind_nginx_follows_ergo_modes(self) -> None:
+        self.assertTrue(effective_jupyter_behind_nginx({
+            'ERGO_PROXY': 'nginx',
+            'ERGO_JUPYTER': 'nginx',
+            'API_JUPYTER_BEHIND_NGINX': 'false',
+        }))
+        self.assertFalse(effective_jupyter_behind_nginx({
+            'ERGO_PROXY': 'none',
+            'ERGO_JUPYTER': 'nginx',
+        }))
+        self.assertTrue(effective_jupyter_behind_nginx({
+            'ERGO_PROXY': 'nginx',
+            'ERGO_JUPYTER': 'auto',
+            'API_JUPYTER_BEHIND_NGINX': 'true',
+        }))
+        self.assertFalse(effective_jupyter_behind_nginx({
+            'ERGO_PROXY': 'nginx',
+            'ERGO_JUPYTER': 'auto',
+            'API_JUPYTER_BEHIND_NGINX': 'false',
+        }))
 
 
 if __name__ == '__main__':

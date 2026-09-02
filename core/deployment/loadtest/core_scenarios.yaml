@@ -1,0 +1,159 @@
+# Базовые сценарии нагрузки на ядро API.
+# path — относительно /api/; auth: bearer | none
+# pages — бандлы запросов (имитация открытия страницы SPA)
+enabled: true
+tags: [api, core]
+scenarios:
+  - id: session_bootstrap
+    method: GET
+    path: /cms/adp/session-bootstrap/
+    weight: 10
+    auth: bearer
+    expect_status: [200]
+  - id: profile
+    method: GET
+    path: /cms/adp/profile/
+    weight: 5
+    auth: bearer
+    expect_status: [200]
+  - id: menu
+    method: GET
+    path: /cms/adp/menu/
+    weight: 8
+    auth: bearer
+    expect_status: [200]
+  - id: my_permissions
+    method: GET
+    path: /cms/adp/my-permissions/
+    weight: 4
+    auth: bearer
+    expect_status: [200]
+  # Write-path: preferences upsert (не пустой json)
+  - id: notifications_prefs_patch
+    method: PATCH
+    path: /notifications/preferences/
+    weight: 3
+    auth: bearer
+    expect_status: [200]
+    json:
+      global:
+        in_app: true
+  # Write-path: UPDATE unread; тело не нужно
+  - id: notifications_mark_all_read
+    method: POST
+    path: /notifications/mark_all_read/
+    weight: 3
+    auth: bearer
+    expect_status: [200]
+pages:
+  # Sidebar notifications на любой auth-странице (после warm bootstrap VU)
+  - id: core_shell_warm
+    weight: 10
+    mode: warm
+    requests:
+      - id: notifications_list
+        method: GET
+        path: /notifications/
+        auth: bearer
+        expect_status: [200]
+      - id: notifications_unread
+        method: GET
+        path: /notifications/unread_count/
+        auth: bearer
+        expect_status: [200]
+      - id: notifications_sources
+        method: GET
+        path: /notifications/source_modules/
+        auth: bearer
+        expect_status: [200]
+  # F5: session-bootstrap + inbox init
+  - id: core_shell_cold
+    weight: 4
+    mode: cold
+    requests:
+      - id: bootstrap
+        method: GET
+        path: /cms/adp/session-bootstrap/
+        auth: bearer
+        expect_status: [200]
+      - id: notifications_list
+        method: GET
+        path: /notifications/
+        auth: bearer
+        expect_status: [200]
+      - id: notifications_unread
+        method: GET
+        path: /notifications/unread_count/
+        auth: bearer
+        expect_status: [200]
+      - id: notifications_sources
+        method: GET
+        path: /notifications/source_modules/
+        auth: bearer
+        expect_status: [200]
+  # /user/notifications — GET затем write (не parallel)
+  - id: core_notifications
+    weight: 5
+    mode: warm
+    parallel: false
+    requests:
+      - id: notifications_list
+        method: GET
+        path: /notifications/
+        auth: bearer
+        expect_status: [200]
+      - id: mark_all_read
+        method: POST
+        path: /notifications/mark_all_read/
+        auth: bearer
+        expect_status: [200]
+  # Вкладка Profile в настройках аккаунта
+  - id: core_account_settings
+    weight: 4
+    mode: warm
+    requests:
+      - id: profile_settings
+        method: GET
+        path: /cms/adp/profile-settings/
+        auth: bearer
+        expect_status: [200]
+      - id: profile
+        method: GET
+        path: /cms/adp/profile/
+        auth: bearer
+        expect_status: [200]
+      - id: user_avatars
+        method: GET
+        path: /settings/user-avatars/
+        auth: bearer
+        expect_status: [200]
+  # Security / devices
+  - id: core_security_devices
+    weight: 3
+    mode: warm
+    requests:
+      - id: devices
+        method: GET
+        path: /cms/adp/devices/
+        auth: bearer
+        expect_status: [200]
+  # Themes + idle active palette
+  - id: core_theme_prefs
+    weight: 3
+    mode: warm
+    requests:
+      - id: themes_catalog
+        method: GET
+        path: /settings/themes/catalog/
+        auth: bearer
+        expect_status: [200]
+      - id: themes_me
+        method: GET
+        path: /settings/themes/me/
+        auth: bearer
+        expect_status: [200]
+      - id: themes_active
+        method: GET
+        path: /settings/themes/active/
+        auth: bearer
+        expect_status: [200]

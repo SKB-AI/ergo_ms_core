@@ -95,18 +95,31 @@ async function uninstallUserConfigFromRemote() {
     ];
 
     let removed = false;
-    const extensionName = 'ergo-ms-user-config-1.2.0';
+    const names = new Set(['ergo-ms-user-config-1.2.0']);
+    const sourcePkg = join(projectRoot, 'extensions', 'user-config', 'package.json');
+    if (existsSync(sourcePkg)) {
+      try {
+        const pkg = JSON.parse(await readFile(sourcePkg, 'utf-8'));
+        if (pkg.publisher && pkg.name && pkg.version) {
+          names.add(`${pkg.publisher}.${pkg.name}-${pkg.version}`);
+        }
+      } catch {
+        // оставляем запасное старое имя каталога
+      }
+    }
 
     for (const remoteDir of remoteDirs) {
-      const targetDir = join(remoteDir, extensionName);
-
-      if (existsSync(targetDir)) {
+      for (const extensionName of names) {
+        const targetDir = join(remoteDir, extensionName);
+        if (!existsSync(targetDir)) {
+          continue;
+        }
         try {
           await fs.rm(targetDir, { recursive: true, force: true });
-          console.log(`  ✅ Удалено с удаленного сервера: ${remoteDir}`);
+          console.log(`  [OK] Удалено с удаленного сервера: ${remoteDir}`);
           removed = true;
         } catch {
-          console.log(`  ⚠️  Не удалось удалить с удаленного сервера: ${remoteDir}`);
+          console.log(`  [WARNING] Не удалось удалить с удаленного сервера: ${remoteDir}`);
         }
       }
     }

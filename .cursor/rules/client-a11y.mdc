@@ -2,11 +2,9 @@
 description: Доступность и адаптив клиента — режимы UI, data-ergo-*, useUiModes, useBreakpoint, landmarks
 globs:
   - "core/client/**/*.vue"
-  - "core/client/**/*.js"
-  - "core/client/**/*.scss"
   - "modules/*/client/**/*.vue"
-  - "modules/*/client/**/*.js"
-  - "modules/*/client/**/*.scss"
+  - "core/client/src/composables/useUiModes.js"
+  - "core/client/src/composables/useBreakpoint.js"
 alwaysApply: false
 ---
 

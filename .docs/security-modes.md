@@ -1,8 +1,14 @@
 # Режимы безопасности
 
-Документ описывает **проект** градации режимов безопасности ERGO MS: четыре уровня, которые задаются одной переменной в `.env`, каталог контролей за этими уровнями, способ для модулей объявить свои требования и команды проверки совместимости. На момент написания это проектное решение, а не реализованная возможность: раздел [Поэтапное внедрение](#поэтапное-внедрение) описывает порядок работ, раздел [Вопросы к обсуждению](#вопросы-к-обсуждению) — то, что нужно согласовать до начала.
+Документ описывает градацию режимов безопасности ERGO MS: четыре уровня, каталог контролей, команды проверки и дальнейшее применение профиля.
 
-Текущее состояние безопасности ядра и перечень отклонений, ради которых эта конструкция задумана, — в документе [Аудит безопасности ядра](security-audit.md).
+**Этап 0 реализован (отчётный):** каталог [`core/deployment/security/profiles.yaml`](../core/deployment/security/profiles.yaml), вычисление `ERGO_SECURITY` / `ERGO_SECURITY_ENFORCE` в [`ergo_modes.py`](../core/deployment/ergo_modes.py), команды `ergoms security-modes` и `ergoms security-check`.
+
+**Этап 1 реализован (честный `standard`):** каталог отражает реальные проверки (`password_policy`, `jupyter_exposure`, `anonymous_endpoints`, `client_browser_log` и др.); login throttle читается из `API_THROTTLE_RATES_LOGIN` (дефолт кода `5/minute`); лимит размера WS — `API_REALTIME_MAX_MESSAGE_BYTES`. **К3** закрыт отдельно (phase 1: пустые шаблоны + production fail-fast). **В5** (пароль Redis) закрыт контролем `broker.redis_password`.
+
+**Этап 2 реализован (apply профиля):** [`profile_defaults.merge_security_profile_defaults`](../core/deployment/security/profile_defaults.py) подставляет скаляры из каталога только для **незаданных** env-ключей; явный `.env` побеждает; профиль **не пишет** `.env`. Runtime API — [`security_profile_runtime.py`](../core/api/src/config/security_profile_runtime.py); media — те же ключи после загрузки env. `API_ACCESS_TOKEN_LIFETIME` остаётся check-only (дефолт кода 30). Пароль Redis **не** инжектится профилем — только `databases.yaml` → `redis.password`. Вне скоупа: MFA (С10), этап 4. Этапы 3–4 — в разделе [Поэтапное внедрение](#поэтапное-внедрение); решения этапа 0 — в [Решения этапа 0](#решения-этапа-0).
+
+Текущее состояние безопасности ядра и перечень отклонений — в документе [Аудит безопасности ядра](security-audit.md).
 
 ## Зачем нужны уровни
 
@@ -94,8 +100,8 @@ controls:
 
 | Контроль | `open` | `standard` | `hardened` | `maximum` |
 |---|---|---|---|---|
-| `auth.login_throttle` | 100/мин | 10/мин | 5/мин | 5/мин |
-| `auth.lockout` | нет | нет | 10 неудач | 5 неудач |
+| `auth.login_throttle` | 100/мин | 5/мин | 5/мин | 5/мин |
+| `auth.lockout` | нет | 10 неудач | 10 неудач | 5 неудач |
 | `auth.reset_code_policy` | без ограничений | срок 15 мин, 5 попыток | срок 10 мин, 3 попытки | восстановление только администратором |
 | `auth.mfa_required` | нет | нет | по выбору пользователя | обязателен |
 | `session.device_binding` | можно отключить | обязательна на всех эндпоинтах | обязательна | обязательна |
@@ -106,6 +112,12 @@ controls:
 | `token.remember_me_max` | 7 суток | 7 суток | 24 часа | запрещено |
 | `token.rotate_refresh` | нет | да | да | да |
 | `token.revoke_on_logout` | нет | да | да | да |
+
+Контроль `auth.lockout`: env `API_AUTH_LOCKOUT_MAX_ATTEMPTS` (0 = выкл.); при unset профиль подставляет 0 / 10 / 10 / 5. Счётчик в cache по нормализованному login; окно/длительность — `API_AUTH_LOCKOUT_WINDOW_SECONDS` / `API_AUTH_LOCKOUT_DURATION_SECONDS` (дефолт 900).
+
+Контроль `session.device_retention`: env `API_SESSION_DEVICE_RETENTION_DAYS` (0 = off); при unset — 0 / 0 / 90 / 30. Purge с `revoke_user_device_session` (beat + `ergoms api session_device_purge`).
+
+Контроль `secrets.no_defaults` (**К3 phase 1**): шаблоны без рабочего `API_SECRET_KEY`; production fail-fast в API и media_api.
 
 ### Права доступа и поверхность API
 
@@ -122,17 +134,25 @@ controls:
 | `registration.mode` | любой | любой | по приглашению или закрыта | закрыта |
 | `password.policy` | не менее 6 знаков | не менее 8, цифра и строчная буква | не менее 12, заглавная и специальный знак | не менее 14 и проверка по списку скомпрометированных |
 
+Контроль `api.object_permissions` (**phase 1, status `partial`**): в ядре есть `ObjectPermissionMixin` / `filter_queryset_for_user`; ViewSet ещё не мигрированы массово. На `hardened`/`maximum` `security-check` даёт warning, не ложный OK.
+
+Контроль `adp.default_role_view_grants`: env `API_ADP_DEFAULT_VIEW_GRANTS` (`granted`/`denied`); при unset runtime подставляет значение профиля. На `granted` роль «Пользователь» без групп получает все `_view`. На `denied` — `_view` только у модулей без API-deny. На `hardened`/`maximum` явный `granted` — нарушение.
+
 ### Транспорт и заголовки
 
 | Контроль | `open` | `standard` | `hardened` | `maximum` |
 |---|---|---|---|---|
 | `transport.https_required` | нет | нет | да, вместе с HSTS и защищёнными cookie | да, включая перенаправление с HTTP |
 | `cors.explicit_origins` | список для разработки | явный список в production | явный список всегда | явный список, шаблоны запрещены |
+| `csrf.trusted_origins` | можно пусто | явный список в production | явный список в production | явный список всегда |
+| `csp.strict` | как есть (`as_is`) | как есть (`as_is`) | без `unsafe-eval` и `unsafe-inline` (`no_unsafe`) | плюс урезание внешних источников (`no_unsafe_plus_externals`, phase 1) |
 
-Контроль `cors.explicit_origins` на уровне `standard` уже отражён в коде: [`cors.py`](../core/api/src/config/settings/cors.py) подставляет localhost только при `ERGO_ENV=development` и прерывает запуск в production без `CORS_ALLOWED_ORIGINS` / `CORS_ALLOWED_ORIGIN_REGEXES` (пока без отдельной переменной `ERGO_SECURITY`).
-| `csrf.trusted_origins` | не требуется | не требуется | обязателен за обратным прокси | обязателен |
-| `csp.strict` | как есть | как есть | без `unsafe-eval` и `unsafe-inline` | плюс явный список внешних источников |
+Контроль `csp.strict` (**phase 1, status `partial`**): env `API_CSP_MODE` читают API middleware и nginx render из [`csp_policy.py`](../core/deployment/security/csp_policy.py). При unset runtime/профиль подставляет значение уровня. На `hardened` карты (Yandex/OSM) могут перестать работать — это ожидаемо. На `maximum` внешние домены урезаны частично (stub); `security-check` даёт warning, не ложный OK.
 | `headers.baseline` | включены | включены | включены | включены |
+
+Контроль `cors.explicit_origins` на уровне `standard` уже отражён в коде: [`cors.py`](../core/api/src/config/settings/cors.py) подставляет localhost только при `ERGO_ENV=development`. В production без `CORS_ALLOWED_ORIGINS` / `CORS_ALLOWED_ORIGIN_REGEXES` берётся публичный origin nginx или `FRONTEND_BASE_URL`; если и он пуст, запуск прерывается (`ImproperlyConfigured`). Отдельной переменной `ERGO_SECURITY` для этого контроля нет.
+
+Контроль `csrf.trusted_origins` — аналогично: [`csrf.py`](../core/api/src/config/settings/csrf.py) допускает пустой список в development; вне development пустой env заполняется тем же runtime-origin, иначе `ImproperlyConfigured`.
 
 ### Realtime
 
@@ -149,10 +169,15 @@ controls:
 | Контроль | `open` | `standard` | `hardened` | `maximum` |
 |---|---|---|---|---|
 | `media.signed_urls_ttl` | 3600 с | 3600 с | 900 с | 300 с |
-| `media.content_validation` | расширение | расширение | расширение и сигнатура содержимого | плюс антивирусная проверка |
-| `media.upload_rate` | выключено в отладке | 30/мин | 15/мин | 10/мин |
+| `media.content_validation` | расширение | расширение и сигнатура содержимого | расширение и сигнатура содержимого | плюс антивирусная проверка |
+| `media.upload_rate` | 100/мин (в DEBUG media_api не режет) | 30/мин | 15/мин | 10/мин |
+| `media.upload_rate_admin` | 300/мин; nginx `/upload/` не ниже | 120/мин | 60/мин | 30/мин |
 | `internal.write_size_limit` | нет | обязателен | обязателен | обязателен |
-| `internal.trusted_proxies` | не проверяется | не проверяется | обязателен список доверенных прокси | плюс отдельный ключ для внутреннего API |
+| `internal.trusted_proxies` | не проверяется | не проверяется | XFF только от доверенных прокси (пустой список = игнорировать XFF) | плюс отдельный ключ для внутреннего API |
+
+Контроль `media.content_validation` в media_api (**phase 1, status `partial`**): режимы `extension` / `extension_and_magic` работают; `extension_magic_av` — stub без ClamAV (`security-check` даёт SKIP/warning, не ложный OK). Env: `MEDIA_API_CONTENT_VALIDATION`.
+
+Частота загрузок: квота обычного пользователя — `MEDIA_API_UPLOAD_RATE`, глобального администратора — `MEDIA_API_UPLOAD_RATE_ADMIN` (класс `quota` в upload-токене). На входе nginx зона `ergo_upload` равна эффективной квоте администратора (грубый потолок по IP); точный учёт — в media_api по `user_id`.
 
 ### Инфраструктура и данные
 
@@ -298,20 +323,28 @@ provides:
 
 | Этап | Содержание | Результат |
 |---|---|---|
-| 0 | Каталог контролей, вычисление уровня, команды `security-modes` и `security-check`. Профиль **ничего не меняет** в работе системы. | Любая установка может узнать, какому уровню она соответствует. |
-| 1 | Исправления критичных и высоких находок отчёта; каждая правка закрывает конкретный контроль уровня `standard`. | Ядро действительно соответствует `standard`. |
-| 2 | Профиль начинает подставлять эффективные значения там, где ключ не задан. Новые установки получают `ERGO_SECURITY=standard` в шаблоне. | Уровень влияет на работу системы. |
-| 3 | Контроли уровней `hardened` и `maximum`: второй фактор, строгая политика содержимого, проверка содержимого файлов, аудит операций чтения. Ротация refresh и отзыв при logout закрыты на этапе 1 (В6) и входят в `standard`. | Доступны все четыре уровня. |
+| 0 | **Сделано.** Каталог контролей, вычисление уровня, команды `security-modes` и `security-check`. Профиль **ничего не меняет** в работе системы. | Любая установка может узнать, какому уровню она соответствует. |
+| 1 | **Сделано.** Честный отчёт для `standard`: truth-up каталога, checkers политики паролей / Jupyter / анонимных эндпоинтов / browser-log, env для login throttle и лимита размера realtime. **К3** закрыт (phase 1). **В5** закрыт контролем `broker.redis_password`. Контроли `db.postgres_password`, `search.master_key`, `llm.listen_loopback` предупреждают о шаблонных секретах инфры и о bind LLM API не на loopback. | `ergoms security-check` не помечает закрытые контроли как SKIP; ядро соответствует `standard` по реализованным контролям. |
+| 2 | **Сделано.** Профиль подставляет эффективные значения там, где ключ не задан (`profile_defaults` + runtime API/media). Новые установки получают `ERGO_SECURITY=standard` в шаблоне. Профиль не пишет `.env`. Пароль Redis не инжектится. | Уровень влияет на работу системы. |
+| 3 | Контроли уровней `hardened` и `maximum`: второй фактор, CSP (С11 phase 1), **session.device_retention**, аудит операций чтения. **auth.lockout** и проверка сигнатуры файлов (С5) входят в `standard`. Ротация refresh и отзыв при logout закрыты на этапе 1 (В6) и входят в `standard`. | Доступны все четыре уровня. |
 | 4 | Файлы `security.yaml` у модулей, проверка совместимости, правило `.cursor/rules/security-modes.mdc`, раздел в [Настройке конфигурации](configuration.md). | Уровень выбирается с учётом подключённых модулей. |
 
 Совместимость с уже работающими установками обеспечивается порядком этапов: до этапа 2 профиль ничего не меняет, а после — уровень по умолчанию остаётся `standard`, и любое расхождение сначала выводится предупреждением, а не прерывает запуск.
 
-## Вопросы к обсуждению
+## Решения этапа 0
 
-Эти решения стоит согласовать до начала реализации.
+| Вопрос | Решение |
+|---|---|
+| Имена уровней | `open` / `standard` / `hardened` / `maximum` |
+| Waivers админа | Отложены (этап 4+); поле `waivable` в каталоге есть, резолва нет |
+| `maximum` без MFA | Контроль `auth.mfa_required` со `status: planned`; check даёт SKIP |
+| Клиент vs runtime | Собранный клиент на этапе 0 не проверяется |
+| Нет `ERGO_SECURITY` в `.env` | Эффективный уровень = `standard` (в отчёте: «по умолчанию») |
+| Модули `security.yaml` | Вне скоупа этапа 0 |
+| Применение значений профиля | **Сделано** (этап 2): merge unset-ключей; `.env` не пишется |
 
-1. **Названия уровней.** Предложены `open`, `standard`, `hardened`, `maximum`. Альтернатива — нейтральная нумерация или названия, привязанные к сценариям (`dev`, `team`, `sensitive`, `regulated`). Переименование после выпуска обойдётся дорого.
-2. **Где хранятся исключения администратора.** Модуль объявляет свои послабления сам, но у администратора установки тоже могут быть основания принять риск осознанно. Вариант — файл `security.waivers.yaml` в корне проекта, который редактирует человек и который хранится вместе с конфигурацией установки. Нужно решить, допускать ли такие исключения вообще и на каких уровнях.
-3. **Судьба уровня `maximum` без второго фактора.** Пока второй фактор не реализован, уровень `maximum` недостижим. Либо он появляется вместе с реализацией второго фактора, либо на этапе 3 контроль временно объявляется предупреждением.
-4. **Влияние на клиент.** Часть контролей действует на этапе сборки клиента, а собранный клиент может пережить смену уровня на сервере. Нужно решить, проверять ли соответствие собранного клиента текущему уровню при запуске.
-5. **Уровень по умолчанию для существующих установок.** У них переменной в `.env` нет. Считать отсутствие значения как `standard` (и сразу выдавать предупреждения) или как `open` до явного указания.
+## Вопросы к обсуждению (этапы 2–4)
+
+1. **Исключения администратора** — допускать ли `security.waivers.yaml` и на каких уровнях.
+2. **Уровень `maximum` без второго фактора** — жёстко требовать MFA или временно `violation: warning` до реализации.
+3. **Влияние на клиент** — проверять ли соответствие собранного клиента текущему уровню при запуске.

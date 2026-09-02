@@ -19,7 +19,15 @@ alwaysApply: false
 | nginx / Redis / NSSM / модульные portable | `virtual_env/packages/{nginx,redis,nssm,…}/` — реестр: [`packages.mdc`](packages.mdc) |
 | Let's Encrypt + ACME webroot | `virtual_env/packages/letsencrypt/`, `…/certbot/webroot/` |
 | pip / Poetry / npm cache | `virtual_env/cache/{pip,poetry,npm}/` |
+| Hugging Face Hub cache (`HF_HOME`) | `virtual_env/cache/huggingface/` |
+| Снимки Hugging Face (`org/name`) | `virtual_env/trained_models/huggingface/` |
 | Архивы portable Python / Node.js | `virtual_env/cache/downloads/` |
+| Docker BuildKit local cache (`DOCKER_DEPS_CACHE=project`) | `virtual_env/cache/docker-cache/` |
+| Loadtest (temp DB/ephemeral) | `virtual_env/cache/loadtest/` |
+| Балансировщик Celery (overlay, история) | `virtual_env/cache/celery_balance/` |
+| Lock записи секретов в `.env` / `databases.yaml` | `virtual_env/cache/env_secrets.lock` |
+| Meilisearch (runtime, LMDB) | `virtual_env/cache/meilisearch/` |
+| Portable Meilisearch | `virtual_env/packages/meilisearch/` |
 | npm workspace (package.json, lock, node_modules) | `virtual_env/npm/` |
 | Временные extract | `virtual_env/cache/tmp/` |
 | Jupyter | `virtual_env/jupyter/` |
@@ -74,6 +82,8 @@ certbot_bin="$root/virtual_env/python/bin/certbot"
 ```
 
 Тесты deployment могут использовать `%TEMP%` для изоляции прогона — не копируй это в install-скрипты.
+
+На Linux `ergoms install-cli` может создать симлинк `/usr/local/bin/ergoms` на `core/deployment/bin/ergoms`. Это регистрация CLI для `sudo`, не данные приложения. `uninstall-cli` снимает ссылку только если она указывает на этот проект.
 
 ## Связанные правила
 

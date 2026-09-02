@@ -23,14 +23,20 @@ from lifecycle.steps.base import DeploymentStep, StepResult  # noqa: E402
 
 _MODULE_TASKS_LOADER = _SCRIPTS_DIR / 'module_tasks_loader.py'
 _INCLUDE_SETUP_FULL = 'setup-full'
+_INCLUDE_SETUP_FULL_AFTER_MIGRATE = 'setup-full-after-migrate'
 
 
-class ModuleSetupTasksStep(DeploymentStep):
-    """Выполнить задачи модулей с include_in: setup-full (только host)."""
+class _ModuleTasksStepBase(DeploymentStep):
+    """Общий запуск задач модулей с заданным include_in (только host)."""
+
+    include_target: str = _INCLUDE_SETUP_FULL
+    step_name: str = 'module_setup_tasks'
+    running_message_key: str = 'module_setup_tasks_running'
+    empty_message_key: str = 'no_module_setup_tasks'
 
     @property
     def name(self) -> str:
-        return 'module_setup_tasks'
+        return self.step_name
 
     def should_run(self, ctx: DeploymentContext) -> bool:
         return ctx.runtime == 'host'
@@ -45,13 +51,13 @@ class ModuleSetupTasksStep(DeploymentStep):
         if tasks is None:
             return StepResult(exit_code=1, message=t('module_tasks_loader_failed'))
         if not tasks:
-            print(format_console('skip', t('no_module_setup_tasks')))
+            print(format_console('skip', t(self.empty_message_key)))
             return StepResult()
 
         print(
             format_console(
                 'info',
-                t('module_setup_tasks_running', count=len(tasks)),
+                t(self.running_message_key, count=len(tasks)),
             )
         )
         env = host_ops.api_env(ctx)
@@ -72,6 +78,14 @@ class ModuleSetupTasksStep(DeploymentStep):
                 env=env,
             )
             if code != 0:
+                if entry.get('optional'):
+                    print(
+                        format_console(
+                            'warning',
+                            t('module_task_optional_failed', label=label, code=code),
+                        )
+                    )
+                    continue
                 print(
                     format_console(
                         'error',
@@ -94,7 +108,7 @@ class ModuleSetupTasksStep(DeploymentStep):
             [
                 str(venv_py), str(_MODULE_TASKS_LOADER),
                 '--root', str(ctx.project_root),
-                '--json', '--target', _INCLUDE_SETUP_FULL,
+                '--json', '--target', self.include_target,
             ],
             cwd=str(ctx.project_root),
             capture_output=True,
@@ -119,3 +133,21 @@ class ModuleSetupTasksStep(DeploymentStep):
             return None
         tasks = payload.get('tasks')
         return tasks if isinstance(tasks, list) else None
+
+
+class ModuleSetupTasksStep(_ModuleTasksStepBase):
+    """Задачи include_in: setup-full — до MigrateStep (portable, CREATE EXTENSION)."""
+
+    include_target = _INCLUDE_SETUP_FULL
+    step_name = 'module_setup_tasks'
+    running_message_key = 'module_setup_tasks_running'
+    empty_message_key = 'no_module_setup_tasks'
+
+
+class ModuleSetupTasksAfterMigrateStep(_ModuleTasksStepBase):
+    """Задачи include_in: setup-full-after-migrate — после MigrateStep (схема БД готова)."""
+
+    include_target = _INCLUDE_SETUP_FULL_AFTER_MIGRATE
+    step_name = 'module_setup_tasks_after_migrate'
+    running_message_key = 'module_setup_tasks_after_migrate_running'
+    empty_message_key = 'no_module_setup_tasks_after_migrate'

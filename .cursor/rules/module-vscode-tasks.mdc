@@ -54,12 +54,15 @@ tasks:
 
 | Значение | Куда попадает |
 |----------|----------------|
-| `setup-full` | шаг `ModuleSetupTasksStep` в рецепте `ergoms setup` / Setup Full System |
+| `setup-full` | шаг `ModuleSetupTasksStep` в рецепте `ergoms setup` / Setup Full System (**до** `MigrateStep`) |
+| `setup-full-after-migrate` | шаг `ModuleSetupTasksAfterMigrateStep` (**после** `MigrateStep`) — когда нужна схема БД |
 | `start-all` | `ergoms start-all` и multi-terminal **Module Services** в Start All Services |
 | `logs-all` | multi-terminal **Logs: All Services** (`provider: ergo-sync`, `target: logs-all`) |
 
 - `hide: true` скрывает задачу из Run Task, но **не** исключает из агрегата
 - Порядок: `order` (число), затем имя модуля, затем `label`
+- Задачи `setup-full` выполняют **до** миграций (после EnsurePostgres/Redis/Meilisearch/Nginx): расширения БД и portable-пакеты модулей должны быть готовы к `CREATE EXTENSION` / схеме
+- Задачи `setup-full-after-migrate` — **после** миграций (индексация RAG, данные, которым нужна ORM-схема)
 - Потребители: [`module_tasks_loader.py`](../../core/deployment/scripts/module_tasks_loader.py), [`start_all_dev.py`](../../core/deployment/scripts/start_all_dev.py), расширение [`ergo-ms-tasks`](../../.vscode/extensions/tasks) (`sync_vscode_logs_services.py --json`)
 
 ```yaml
@@ -111,9 +114,10 @@ tasks:
 | `detail` | Подпись в Run Task |
 | `command` | Только `ergoms …` |
 | `hide` | `true` — не показывать в Run Task (агрегаты всё равно видят задачу) |
-| `include_in` | Список: `setup-full` и/или `start-all` |
+| `include_in` | Список: `setup-full`, `setup-full-after-migrate`, `start-all`, `logs-all` |
 | `order` | Порядок внутри агрегата (меньше — раньше) |
 | `panel` | `shared` или `new` (терминал Run Task) |
+| `optional` | `true` — ошибка задачи в setup-full / setup-full-after-migrate не останавливает рецепт (предупреждение и дальше) |
 
 Эталон: `modules/<name>/vscode.tasks.yaml` рядом с `ergoms.conf` (шаблон модуля в репозитории).
 

@@ -1,0 +1,111 @@
+---
+description: Отмена через success-toast — showUndoableSuccess, undoRegistry, CLIENT_TOAST_UNDO_ENABLED, undoAudit
+alwaysApply: false
+---
+
+# Отмена действия через toast (Undo)
+
+Мягкая отмена последних успешных действий на клиенте — **кнопка в success-toast**, не отдельная страница и не глобальный Ctrl+Z. Стек хранится **в памяти** (`undoRegistry`); логика отката — в колбэке `onUndo` у вызывающего кода.
+
+Эталон: редактор тем [`themeEditorActions.js`](../../core/client/src/core/cms/adp/settings/themeEditor/themeEditorActions.js), инфраструктура — [`toast.js`](../../core/client/src/js/utils/toast.js), [`undoRegistry.js`](../../core/client/src/js/utils/undoRegistry.js).
+
+## Кратко
+
+- API: `showUndoableSuccess(message, { onUndo, … })` из `@/js/utils/toast.js`
+- Флаг: `CLIENT_TOAST_UNDO_ENABLED` (по умолчанию **`false`**) — без него обычный `showSuccess`
+- Перед действием сохрани **snapshot** «как было»; в `onUndo` восстанови его (API и/или локальный state)
+- Журнал отмен: `undoAudit` → `reportUndo` (не блокирует UI)
+- Стек / «Отменить все»: `group` + `kind` + опционально `stackMax` / `batchUndo`
+- Не дублируй свой Undo UI и свой registry в модуле
+
+## Когда добавлять Undo
+
+Делай `showUndoableSuccess`, если действие:
+
+- уже **успешно применено** (после ответа API или локального применения);
+- обратимо за время жизни toast (~10 с по умолчанию);
+- откат безопасен и понятен пользователю (вернуть default, восстановить копию, откатить preview).
+
+**Не** используй для необратимых операций без реального отката, длинных фоновых задач и сценариев, где нужна только confirm-модалка до действия ([`modal-center.mdc`](modal-center.mdc)).
+
+## Env
+
+| Ключ | Назначение | По умолчанию |
+|------|------------|--------------|
+| `CLIENT_TOAST_UNDO_ENABLED` | показать кнопку «Отменить» | `false` |
+| `CLIENT_TOAST_UNDO_STACK_MAX` | глубина стека при `group` + `stackMax` | `3` |
+
+Ключи — в [`.env.example`](../../.env.example); чтение — [`clientEnv.js`](../../core/client/src/js/clientEnv.js). После смены `.env` — перезапуск Vite / `ergoms client-build` (переменные `CLIENT_*` пекутся при сборке).
+
+## Обязательно
+
+1. Импорт только из `@/js/utils/toast.js` — не копируй toast-кнопки и не импортируй `vue-sonner` напрямую.
+2. `onUndo` — реальный откат; при ошибке покажи toast и **пробрось** исключение (кнопку снова разрешит ядро).
+3. Тексты UI — i18n (`common.undo`, `common.undoAll`, сообщения сценария).
+4. Для админ-значимых откатов передай `undoAudit` (`kind`, `label`, …) — см. [`reportUndo.js`](../../core/client/src/core/audit/js/reportUndo.js).
+5. Несколько связанных отмен одного сценария — одна `group` (строка-константа), разный `kind` при необходимости.
+6. Batch («Отменить все»): `batchUndo` + при необходимости `batchContext` с baseline самой старой записи; включается при count > 1.
+
+## Запрещено
+
+```javascript
+// BAD — свой стек / своя кнопка Undo в модуле
+const undoStack = []
+toast.success(msg, { onClick: () => myUndo() })
+
+// BAD — success без snapshot: откатывать нечего
+await apiClient.post(...)
+showUndoableSuccess(tGlobal('…saved'), { onUndo: async () => {} })
+
+// BAD — ждать флаг env в коде сценария; showUndoableSuccess сам деградирует в showSuccess
+if (clientEnv.toastUndoEnabled) { showUndoableSuccess(...) } else { showSuccess(...) }
+```
+
+```javascript
+// GOOD — snapshot → действие → undoable toast
+import { showUndoableSuccess } from '@/js/utils/toast.js'
+import { tGlobal } from '@/i18n/index.js'
+
+const previous = snapshotEntity(entity)
+const res = await apiClient.patch(url, payload)
+if (!res.success) { /* ошибка */ return }
+
+showUndoableSuccess(tGlobal('…success'), {
+  group: 'my.feature.edit',
+  kind: 'my.feature.updated',
+  undoAudit: {
+    kind: 'my.feature.updated',
+    label: tGlobal('…undoKind'),
+    entityLabel: entity.name || '',
+    entityType: 'entity',
+    sourceModule: '<name>',
+  },
+  onUndo: async () => {
+    await restoreEntity(previous)
+  },
+})
+```
+
+## Параметры `showUndoableSuccess`
+
+| Опция | Назначение |
+|-------|------------|
+| `onUndo` | обязательный откат одной записи |
+| `group` | ключ стека в `undoRegistry`; без group — одиночный toast |
+| `kind` | тип записи в группе; для batch |
+| `stackMax` | макс. глубина стека (часто `clientEnv.toastUndoStackMax`) |
+| `batchUndo` / `batchContext` | откат всех записей одного `kind` |
+| `onStackEmpty` | колбэк, когда стек группы опустел после undo |
+| `undoAudit` | payload для `POST audit/events/record-undo/` |
+| `undoLabel` / `timeout` | подпись кнопки / lifetime toast |
+
+Поведение стека: виден только верх; закрытие toast по таймауту **без** undo сбрасывает **всю** группу; «Отменить все» — через `confirmAction`.
+
+## Связанные правила
+
+| Тема | Файл |
+|------|------|
+| Обычные toast / confirm | [`client_code.mdc`](client_code.mdc) |
+| Журнал действий | [`audit.mdc`](audit.mdc) |
+| Шаблоны `.env` | [`env-examples.mdc`](env-examples.mdc) |
+| Клиент Vue | [`client_code.mdc`](client_code.mdc) |

@@ -27,10 +27,16 @@ LOG_FILE_DEFAULTS: dict[str, str] = {
     'NGINX_ACCESS': 'nginx-access.log',
     'NGINX_ERROR': 'nginx-error.log',
     'REDIS': 'redis.log',
+    'MEILISEARCH': 'meilisearch.log',
+    'POSTGRES': 'postgresql.log',
     'CLIENT_DEV': 'client-dev.log',
     'CLIENT_BROWSER': 'client-browser.log',
     'CLIENT_MONITOR': 'client-monitor.log',
     'AUDIT': 'audit.log',
+    'OLLAMA': 'ollama-serve.log',
+    'JUPYTER': 'jupyter.log',
+    'SETUP_FULL': 'setup-full.log',
+    'ERGOMS': 'ergoms.log',
 }
 
 
@@ -256,6 +262,16 @@ def infra_rotation_settings(project_root: Path | None = None) -> dict[str, int |
             5,
             project_root,
         ),
+        'copytruncate_max_bytes': _read_int_chain(
+            ('ERGO_LOG_INFRA_MAX_BYTES', 'ERGO_LOG_MAX_BYTES'),
+            10 * 1024 * 1024,
+            project_root,
+        ),
+        'copytruncate_backup_count': _read_int_chain(
+            ('ERGO_LOG_INFRA_BACKUP_COUNT', 'ERGO_LOG_BACKUP_COUNT'),
+            5,
+            project_root,
+        ),
         'schedule_hour': _read_int_chain(('ERGO_LOG_INFRA_ROTATE_HOUR',), 3, project_root),
     }
 
@@ -272,6 +288,10 @@ def service_log_map(project_root: Path | None = None) -> dict[str, list[str]]:
             log_basename('NGINX_ACCESS', project_root),
         ],
         'ergo_ms_redis': [log_basename('REDIS', project_root)],
+        'ergo_ms_meilisearch': [log_basename('MEILISEARCH', project_root)],
+        'ergo-ollama': [log_basename('OLLAMA', project_root)],
+        'ergo_ms_ollama': [log_basename('OLLAMA', project_root)],
+        'ergo_ms_jupyter': [log_basename('JUPYTER', project_root)],
         # legacy имена до унификации префикса ergo_ms_
         'ergo-api-dev': [log_basename('API', project_root)],
         'ergo-media-api': [log_basename('MEDIA_API', project_root)],
@@ -279,6 +299,9 @@ def service_log_map(project_root: Path | None = None) -> dict[str, list[str]]:
         'ergo-celery-worker': [log_basename('CELERY_WORKER', project_root)],
         'ergo-client-dev': [log_basename('CLIENT_DEV', project_root)],
         'ergo-redis': [log_basename('REDIS', project_root)],
+        'setup-full': [log_basename('SETUP_FULL', project_root)],
+        'setup': [log_basename('SETUP_FULL', project_root)],
+        'ergoms': [log_basename('ERGOMS', project_root)],
     }
 
 

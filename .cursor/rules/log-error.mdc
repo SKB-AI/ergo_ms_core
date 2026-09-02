@@ -1,5 +1,8 @@
 ---
 description: Логирование ошибок на клиенте — logError, logWarn, client-browser.log, без console.error(axios)
+globs:
+  - "**/logError.js"
+  - "core/client/src/js/utils/**"
 alwaysApply: false
 ---
 
@@ -42,7 +45,7 @@ logError('Ошибка сохранения', error)
 - `CLIENT_BROWSER_LOG_ENABLED=false` — полностью отключить `client-browser.log`
 - `sourcemap: false` в сборке ([`vite.config.js`](../../core/client/vite.config.js))
 
-При `logError` ошибки уходят на `POST /api/cms/client-log/` → `logs/client-browser.log` (см. [`logging.mdc`](logging.mdc)).
+При `logError` ошибки уходят на `POST /api/cms/client-log/` → `logs/client-browser.log` (см. [`logging.mdc`](logging.mdc)). Эндпоинт требует JWT: гость и зависон до входа в этот файл **не** пишут. За nginx смотри `logs/nginx-access.log` и GET `/__client-boot` — [`nginx-spa-boot.mdc`](nginx-spa-boot.mdc).
 
 Эталон использования: `core/client/src/js/api/manager.js`.
 
@@ -54,3 +57,4 @@ logError('Ошибка сохранения', error)
 | Чеклист безопасности | [`security.mdc`](security.mdc) |
 | Детали безопасности | [`security-details.mdc`](security-details.mdc) |
 | Клиент Vue | [`client_code.mdc`](client_code.mdc) |
+| Пустой экран за nginx | [`nginx-spa-boot.mdc`](nginx-spa-boot.mdc) |

@@ -59,6 +59,53 @@ function Test-ShouldRunOnThisPlatform {
     return $true
 }
 
+function Split-CompositeCommand {
+    param([string]$CommandDef)
+    $parts = New-Object System.Collections.Generic.List[string]
+    $buf = New-Object System.Text.StringBuilder
+    $quote = [char]0
+    $escaped = $false
+    $chars = $CommandDef.ToCharArray()
+    $i = 0
+    while ($i -lt $chars.Length) {
+        $ch = $chars[$i]
+        if ($quote -ne [char]0) {
+            [void]$buf.Append($ch)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq [char]'\') {
+                $escaped = $true
+            } elseif ($ch -eq $quote) {
+                $quote = [char]0
+            }
+            $i++
+            continue
+        }
+        if ($ch -eq '"' -or $ch -eq "'") {
+            $quote = $ch
+            [void]$buf.Append($ch)
+            $i++
+            continue
+        }
+        if ($ch -eq '&' -and ($i + 1) -lt $chars.Length -and $chars[$i + 1] -eq '&') {
+            $part = $buf.ToString().Trim()
+            if ($part) {
+                $parts.Add($part)
+            }
+            [void]$buf.Clear()
+            $i += 2
+            continue
+        }
+        [void]$buf.Append($ch)
+        $i++
+    }
+    $tail = $buf.ToString().Trim()
+    if ($tail) {
+        $parts.Add($tail)
+    }
+    return , $parts.ToArray()
+}
+
 function Add-PortableNodejsToPath {
     param([Parameter(Mandatory = $true)][string]$Root)
     $nodeDir = Join-Path $Root 'virtual_env\packages\nodejs'
@@ -88,7 +135,7 @@ function Invoke-CustomCommand {
     
     # Check if it's a composite command (contains &&)
     if ($commandDef -match '&&') {
-        $subCommands = $commandDef -split '&&' | ForEach-Object { $_.Trim() }
+        $subCommands = Split-CompositeCommand -CommandDef $commandDef
         Write-ErgomsMessage -Key 'cmd_running_composite' -Color Cyan -Param @{ name = $CommandName }
         
         foreach ($subCmd in $subCommands) {
@@ -227,6 +274,9 @@ function Execute-CommandString {
                         $fullCommand += " " + ($UserArgs -join ' ')
                     }
                     & cmd /c $fullCommand
+                    if ($LASTEXITCODE -ne 0) {
+                        exit $LASTEXITCODE
+                    }
                 }
                 finally {
                     Pop-Location
@@ -241,6 +291,9 @@ function Execute-CommandString {
                         $fullCommand += " " + ($UserArgs -join ' ')
                     }
                     & cmd /c $fullCommand
+                    if ($LASTEXITCODE -ne 0) {
+                        exit $LASTEXITCODE
+                    }
                 }
                 finally {
                     Pop-Location

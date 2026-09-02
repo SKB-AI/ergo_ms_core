@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const osAbstraction = require('./lib/os-abstraction.cjs');
+const { applyCursorBrowserPolicy } = require('./cursor_browser_policy');
 
 /**
  * ERGO MS User Config Extension
@@ -594,11 +595,16 @@ async function applyAllConfig(showNotification = true) {
     
     // Apply keybindings (may not work if running on remote host)
     const keybindingsResult = await applyUserKeybindings(workspaceFolderUri, showNotification);
+    const browserPolicy = applyCursorBrowserPolicy(workspaceFolderUri);
     
     const totalApplied = settingsResult.applied + keybindingsResult.applied;
     const totalSkipped = settingsResult.skipped + keybindingsResult.skipped;
     const isRunningOnRemote = settingsResult.runningOnRemote || keybindingsResult.runningOnRemote;
     
+    if (browserPolicy.error) {
+        console.log(`Cursor browser policy error: ${browserPolicy.error}`);
+    }
+
     if (showNotification && totalApplied > 0) {
         vscode.window.showInformationMessage(
             `ERGO MS: Applied ${totalApplied} setting(s)/keybinding(s)`
@@ -608,6 +614,16 @@ async function applyAllConfig(showNotification = true) {
         updateStatusBar('Config up to date');
     } else if (isRunningOnRemote) {
         updateStatusBar(`Remote: ${getRemoteType()}`);
+    }
+
+    if (browserPolicy.changed) {
+        const action = await vscode.window.showInformationMessage(
+            'ERGO MS: Cursor больше не будет сам открывать страницы во встроенном браузере. Перезагрузите окно, чтобы политика применилась сейчас.',
+            'Перезагрузить'
+        );
+        if (action === 'Перезагрузить') {
+            await vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
     }
     
     return { settingsResult, keybindingsResult };
@@ -638,10 +654,12 @@ async function installExtensionLocally(context) {
         // Read extension files from workspace
         const packageJsonUri = vscode.Uri.joinPath(workspaceFolderUri, '.vscode', 'extensions', 'user-config', 'package.json');
         const extensionJsUri = vscode.Uri.joinPath(workspaceFolderUri, '.vscode', 'extensions', 'user-config', 'extension.js');
+        const browserPolicyUri = vscode.Uri.joinPath(workspaceFolderUri, '.vscode', 'extensions', 'user-config', 'cursor_browser_policy.js');
         const iconUri = vscode.Uri.joinPath(workspaceFolderUri, '.vscode', 'extensions', 'user-config', 'icon.png');
         
         const packageJsonContent = await vscode.workspace.fs.readFile(packageJsonUri);
         const extensionJsContent = await vscode.workspace.fs.readFile(extensionJsUri);
+        const browserPolicyContent = await vscode.workspace.fs.readFile(browserPolicyUri);
         let iconContent = null;
         try {
             iconContent = await vscode.workspace.fs.readFile(iconUri);
@@ -661,6 +679,7 @@ async function installExtensionLocally(context) {
         // Write files
         fs.writeFileSync(path.join(targetDir, 'package.json'), packageJsonContent);
         fs.writeFileSync(path.join(targetDir, 'extension.js'), extensionJsContent);
+        fs.writeFileSync(path.join(targetDir, 'cursor_browser_policy.js'), browserPolicyContent);
         if (iconContent) {
             fs.writeFileSync(path.join(targetDir, 'icon.png'), iconContent);
         }

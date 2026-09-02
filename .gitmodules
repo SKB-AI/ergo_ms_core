@@ -21,6 +21,13 @@
 	update = merge
 	ignore = all
 
+[submodule "core/.github"]
+	path = core/.github
+	url = https://github.com/ergoms/.github.git
+	branch = dev
+	update = merge
+	ignore = all
+
 # Репозитории сторонних модулей
 
 [submodule "lms"]
@@ -58,9 +65,9 @@
 	update = merge
 	ignore = all
 
-[submodule "university_project_activities"]
-	path = modules/project_ed
-	url = https://github.com/SKB-AI/ergo_ms_university_project_activities.git
+[submodule "aspd"]
+	path = modules/aspd
+	url = https://github.com/ergoms/ergo_ms_aspd.git
 	branch = dev
 	update = merge
 	ignore = all
@@ -142,13 +149,6 @@
 	update = merge
 	ignore = all
 
-[submodule "technical_process_analysis"]
-	path = modules/technical_process_analysis
-	url = https://github.com/SKB-AI/ergo_ms_technical_process_analysis.git
-	branch = dev
-	update = merge
-	ignore = all
-
 [submodule "modules/ollama_framework"]
 	path = modules/ollama_framework
 	url = https://github.com/SKB-AI/ergo_ms_ollama_framework.git
@@ -172,10 +172,17 @@
 
 [submodule "modules/module_template"]
 	path = modules/module_template
-	url = https://github.com/Wyaro/module_template.git
-    branch = main
+	url = https://github.com/ergoms/module_template.git
+	branch = dev
     update = merge
     ignore = all
+
+[submodule "modules/announcements"]
+	path = modules/announcements
+	url = https://github.com/ergoms/ergo_ms_announcements.git
+	branch = dev
+	update = merge
+	ignore = all
 
 [submodule "modules/hunter_s_notes"]
 	path = modules/hunter_s_notes
@@ -183,4 +190,29 @@
 	branch = dev
 	update = merge
 	ignore = all
-	
+
+[submodule "modules/saspd"]
+	path = modules/saspd
+	url = https://github.com/ergoms/ergo_ms_saspd.git
+	branch = dev
+	update = merge
+	ignore = all
+
+[submodule "modules/career_admission"]
+	path = modules/career_admission
+	url = https://github.com/ergoms/ergo_ms_career_admission.git
+	branch = dev
+	update = merge
+	ignore = all
+[submodule "modules/educational_trajectories"]
+	path = modules/educational_trajectories
+	url = https://github.com/ergoms/ergo_ms_educational_trajectories.git
+	branch = dev
+	update = merge
+	ignore = all
+[submodule "modules/rag_techprocess"]
+	path = modules/rag_techprocess
+	url = https://github.com/ergoms/ergo_ms_rag_techprocess.git
+	branch = dev
+	update = merge
+	ignore = all

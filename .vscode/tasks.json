@@ -209,11 +209,14 @@
         },
         {
             "label": "Services",
-            "detail": "Внутренняя композиция: Redis Dev → backend → модули → клиент",
+            "detail": "Внутренняя композиция: логи БД → Redis Dev → Meilisearch Dev → Jupyter Dev → backend → модули → клиент",
             "hide": true,
             "dependsOrder": "sequence",
             "dependsOn": [
+                "Database Dev",
                 "Redis Dev",
+                "Meilisearch Dev",
+                "Jupyter Dev",
                 "Backend Services",
                 "Module Services",
                 "Client Dev"
@@ -222,6 +225,35 @@
                 "reveal": "silent",
                 "panel": "shared"
             },
+            "windows": {
+                "options": {
+                    "env": {
+                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
+                    }
+                }
+            },
+            "linux": {
+                "options": {
+                    "env": {
+                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
+                    }
+                }
+            }
+        },
+        {
+            "label": "Database Dev",
+            "detail": "Открыть логи default БД по ERGO_DB (sqlite, postgres, portable_postgres, mysql, mssql)",
+            "hide": true,
+            "type": "multi-terminal",
+            "source": {
+                "provider": "ergo-sync",
+                "target": "db-dev"
+            },
+            "commandTemplate": "ergoms start-db-dev",
+            "nameTemplate": "${key}",
+            "group": "db-dev",
+            "delay": 300,
+            "hideControlTerminal": true,
             "windows": {
                 "options": {
                     "env": {
@@ -250,6 +282,66 @@
             "stopCommandTemplate": "ergoms stop-${key}-dev",
             "nameTemplate": "${key}",
             "group": "redis-dev",
+            "delay": 500,
+            "hideControlTerminal": true,
+            "windows": {
+                "options": {
+                    "env": {
+                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
+                    }
+                }
+            },
+            "linux": {
+                "options": {
+                    "env": {
+                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
+                    }
+                }
+            }
+        },
+        {
+            "label": "Meilisearch Dev",
+            "detail": "Запустить Meilisearch в режиме разработки (если поиск включён)",
+            "hide": true,
+            "type": "multi-terminal",
+            "source": {
+                "provider": "ergo-sync",
+                "target": "meilisearch-dev"
+            },
+            "commandTemplate": "ergoms start-meilisearch-dev",
+            "stopCommandTemplate": "ergoms stop-meilisearch-dev",
+            "nameTemplate": "${key}",
+            "group": "meilisearch-dev",
+            "delay": 500,
+            "hideControlTerminal": true,
+            "windows": {
+                "options": {
+                    "env": {
+                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
+                    }
+                }
+            },
+            "linux": {
+                "options": {
+                    "env": {
+                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
+                    }
+                }
+            }
+        },
+        {
+            "label": "Jupyter Dev",
+            "detail": "Запустить JupyterLab в режиме разработки, если ERGO_JUPYTER не none",
+            "hide": true,
+            "type": "multi-terminal",
+            "source": {
+                "provider": "ergo-sync",
+                "target": "jupyter-dev"
+            },
+            "commandTemplate": "ergoms start-jupyter-dev",
+            "stopCommandTemplate": "ergoms stop-jupyter-dev",
+            "nameTemplate": "${key}",
+            "group": "jupyter-dev",
             "delay": 500,
             "hideControlTerminal": true,
             "windows": {
@@ -373,7 +465,7 @@
         },
         {
             "label": "Start All Services",
-            "detail": "Запустить все службы разработки: прогрев кэшей, Redis, API, Media API, Celery, модули и клиент после готовности API",
+            "detail": "Запустить все службы разработки: прогрев кэшей, логи БД, Redis, Meilisearch, Jupyter, API, Media API, Celery, модули и клиент после готовности API",
             "dependsOrder": "sequence",
             "dependsOn": [
                 "Cache Warmup",
@@ -432,49 +524,6 @@
                     }
                 }
             }
-        },
-        {
-            "label": "Nginx / Client",
-            "detail": "Запустить клиент (nginx или Vite через ergoms start-client)",
-            "hide": true,
-            "type": "shell",
-            "command": "ergoms start-client",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "panel": "new"
-            },
-            "problemMatcher": []
         },
         {
             "label": "API",
@@ -606,403 +655,8 @@
             "problemMatcher": []
         },
         {
-            "label": "Jupyter: Start",
-            "detail": "Запустить Jupyter Notebook в окружении проекта",
-            "type": "shell",
-            "command": "ergoms start-jupyter",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": true,
-                "panel": "new"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Nginx: Install & Start",
-            "detail": "Установить portable nginx и запустить службу",
-            "type": "shell",
-            "command": "ergoms install-nginx",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": true,
-                "panel": "new"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Nginx: Stop",
-            "detail": "Остановить службу nginx",
-            "type": "shell",
-            "command": "ergoms stop-nginx",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "panel": "shared"
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Nginx: Reload",
-            "detail": "Перезагрузить конфигурацию nginx без простоя",
-            "type": "shell",
-            "command": "ergoms reload-nginx",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "panel": "shared"
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Nginx: Uninstall",
-            "detail": "Удалить nginx с очисткой данных (-Purge)",
-            "type": "shell",
-            "command": "ergoms uninstall-nginx -Purge",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": true,
-                "panel": "new"
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Redis: Install & Start",
-            "detail": "Установить portable Redis и запустить службу",
-            "type": "shell",
-            "command": "ergoms install-redis",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": true,
-                "panel": "new"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Redis: Stop",
-            "detail": "Остановить службу Redis",
-            "type": "shell",
-            "command": "ergoms stop-redis",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "panel": "shared"
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Redis: Uninstall",
-            "detail": "Удалить Redis с очисткой данных (-Purge)",
-            "type": "shell",
-            "command": "ergoms uninstall-redis -Purge",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": true,
-                "panel": "new"
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Redis: Restart",
-            "detail": "Перезапустить службу Redis",
-            "type": "shell",
-            "command": "ergoms restart-redis",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "cmd.exe",
-                        "args": [
-                            "/d",
-                            "/c"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}\\core\\deployment\\bin;${env:Path};${env:PATH};${env:SystemRoot}\\System32;${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0"
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-lc"
-                        ]
-                    },
-                    "env": {
-                        "PATH": "${workspaceFolder}/core/deployment/bin:${env:PATH}"
-                    }
-                }
-            },
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "panel": "shared"
-            },
-            "problemMatcher": []
-        },
-        {
             "label": "Logs: All Services",
-            "detail": "Открыть терминалы логов ядра, Celery и модулей",
+            "detail": "Открыть терминалы логов ядра, default БД, Celery и модулей",
             "type": "multi-terminal",
             "sources": [
                 {
@@ -1015,6 +669,7 @@
             "group": "logs-all",
             "delay": 400,
             "hideControlTerminal": true,
+            "launchAs": "terminal",
             "problemMatcher": [],
             "windows": {
                 "options": {

@@ -21,6 +21,10 @@ class CopyStrategy(ABC):
     def copy(self, source: Path, target: Path) -> None:
         ...
 
+    def merge_into_existing(self, source: Path, target: Path) -> str:
+        """Дописать недостающее в уже существующий файл. Пустая строка — без изменений."""
+        return ''
+
 
 class FullCopyStrategy(CopyStrategy):
     """Полное копирование файла."""
@@ -29,12 +33,34 @@ class FullCopyStrategy(CopyStrategy):
         shutil.copy2(source, target)
 
 
+class EnvPreserveSecretsCopyStrategy(CopyStrategy):
+    """Копирует .env.example и возвращает уже заданные ключи, пароли и токены."""
+
+    def __init__(self) -> None:
+        self.last_detail = ''
+
+    def copy(self, source: Path, target: Path) -> None:
+        from .env_preserve import restore_env_secrets, snapshot_env_secrets
+
+        preserved = snapshot_env_secrets(target, source)
+        shutil.copy2(source, target)
+        restored = restore_env_secrets(target, preserved)
+        if restored:
+            self.last_detail = t('scaffold_env_secrets_kept', count=len(restored))
+        else:
+            self.last_detail = ''
+
+
 class DatabasesYamlCopyStrategy(CopyStrategy):
     """
     Минимальный databases.yaml: всегда ``default``.
 
-    Секция ``redis`` — только при ERGO_BROKER=redis (или явном REDIS_ENABLED).
+    Секция ``redis`` — при ERGO_BROKER=redis (или явном REDIS_ENABLED):
+    в новый файл и в уже существующий, если секции ещё нет.
     Порт default: portable_postgres → 5433, postgres → 5432.
+    Уже заданные user/password возвращаются после копирования шаблона,
+    даже если portable-кластер ещё не создан. Секции с секретами вне
+    минимального набора дописываются обратно.
     Решение читается в момент copy (после scaffold .env в том же прогоне).
     """
 
@@ -46,12 +72,23 @@ class DatabasesYamlCopyStrategy(CopyStrategy):
         self.last_detail = ''
 
     def copy(self, source: Path, target: Path) -> None:
+        from security.ensure_infra_credentials import (
+            restore_live_credentials,
+            restore_secret_section_blocks,
+            snapshot_live_credentials,
+            snapshot_secret_section_blocks,
+        )
+
+        preserved = snapshot_live_credentials(target)
         values = self._env_values()
         sections = self._sections(values)
+        extra_blocks = snapshot_secret_section_blocks(target, skip=frozenset(sections))
         NamedSectionsCopyStrategy(sections).copy(source, target)
         port = self._default_port_for_mode(values)
         if port is not None:
             self._rewrite_default_port(target, port)
+        restored = restore_live_credentials(target, preserved)
+        restored_extra = restore_secret_section_blocks(target, extra_blocks)
 
         bits = ['default']
         if 'redis' in sections:
@@ -63,7 +100,19 @@ class DatabasesYamlCopyStrategy(CopyStrategy):
             extra = t('scaffold_redis_hint')
         elif port is None:
             extra = t('scaffold_celery_hint')
+        if restored or restored_extra:
+            extra += t('scaffold_credentials_kept')
         self.last_detail = ', '.join(bits) + extra
+
+    def merge_into_existing(self, source: Path, target: Path) -> str:
+        from ergo_modes import effective_redis_enabled
+        from security.ensure_infra_credentials import ensure_redis_section_present
+
+        if not target.is_file() or not effective_redis_enabled(self._env_values()):
+            return ''
+        if ensure_redis_section_present(self._root, target, example_path=source):
+            return t('scaffold_redis_section_added')
+        return ''
 
     def _env_values(self) -> dict[str, str]:
         from env_file_loader import load_project_env, parse_env_file
@@ -231,3 +280,21 @@ class NamedSectionsCopyStrategy(CopyStrategy):
 
         commit_section()
         return result
+
+
+def extract_databases_section_block(text: str, section: str) -> str:
+    """Комментарии перед секцией и её тело из databases.yaml.example, без ключа databases:."""
+    parser = NamedSectionsCopyStrategy((section,))
+    lines = text.splitlines()
+    idx = parser._find_databases_line(lines)
+    if idx is None:
+        return ''
+    parsed = parser._parse_sections(lines[idx + 1 :])
+    pending_body = parsed.get(section)
+    if not pending_body:
+        return ''
+    pending, body = pending_body
+    parts = list(pending) + list(body)
+    if not parts:
+        return ''
+    return '\n'.join(parts).rstrip() + '\n'

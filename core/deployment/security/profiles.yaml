@@ -1,0 +1,775 @@
+# Каталог контролей режимов безопасности ERGO MS (этап 2 — merge unset в runtime).
+# Профиль не записывает .env. См. .docs/security-modes.md
+
+version: 1
+
+levels:
+  open: 0
+  standard: 1
+  hardened: 2
+  maximum: 3
+
+level_titles:
+  open: Локальная разработка и демонстрации
+  standard: Рабочий минимум (по умолчанию)
+  hardened: Чувствительные данные
+  maximum: Жёсткий режим под внешние требования
+
+refs:
+  insecure_secret_values:
+    - secret_key
+    - changeme
+    - django-insecure
+    - secret-key
+    - media-api-insecure-key
+  insecure_db_passwords:
+    - admin
+    - postgres
+    - changeme
+    - password
+  insecure_search_keys:
+    - ergo_ms_dev_meili_key
+
+controls:
+  # --- Auth / session / token ---
+  - id: auth.login_throttle
+    layer: api
+    title: Ограничение частоты попыток входа
+    kind: value
+    env_key: API_THROTTLE_RATES_LOGIN
+    compare: max_rate
+    profiles:
+      open: 100/minute
+      standard: 5/minute
+      hardened: 5/minute
+      maximum: 5/minute
+    violation: error
+    waivable: false
+    status: implemented
+    check: env_rate_max
+    audit: [B1]
+
+  - id: auth.lockout
+    layer: api
+    title: Блокировка после неудачных попыток входа
+    kind: value
+    env_key: API_AUTH_LOCKOUT_MAX_ATTEMPTS
+    profiles:
+      open: none
+      standard: 10
+      hardened: 10
+      maximum: 5
+    violation: error
+    waivable: false
+    status: implemented
+    check: env_int_max
+
+  - id: auth.reset_code_policy
+    layer: api
+    title: Политика кода восстановления пароля
+    kind: value
+    profiles:
+      open: unrestricted
+      standard: ttl15_attempts5
+      hardened: ttl10_attempts3
+      maximum: admin_only
+    violation: error
+    waivable: false
+    status: implemented
+    check: reset_code_policy
+    audit: [B2]
+
+  - id: auth.mfa_required
+    layer: api
+    title: Обязательная двухфакторная аутентификация
+    kind: switch
+    profiles:
+      open: false
+      standard: false
+      hardened: optional
+      maximum: true
+    violation: error
+    waivable: false
+    status: planned
+    check: deferred
+    audit: [C10]
+
+  - id: session.device_binding
+    layer: api
+    title: Привязка сессии к устройству
+    kind: policy
+    profiles:
+      open: optional
+      standard: required
+      hardened: required
+      maximum: required
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [K2]
+
+  - id: session.revoke_on_password_change
+    layer: api
+    title: Отзыв сессий при смене пароля
+    kind: policy
+    profiles:
+      open: false
+      standard: true
+      hardened: true
+      maximum: true
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [B2]
+
+  - id: session.device_retention
+    layer: api
+    title: Срок хранения записей устройств
+    kind: value
+    env_key: API_SESSION_DEVICE_RETENTION_DAYS
+    profiles:
+      open: unlimited
+      standard: unlimited
+      hardened: 90
+      maximum: 30
+    violation: warning
+    waivable: false
+    status: implemented
+    check: env_int_max
+    audit: [H6]
+
+  - id: token.lifetime_required
+    layer: api
+    title: Обязательный срок жизни JWT
+    kind: switch
+    env_key: API_JWT_LIFETIME_ENABLED
+    profiles:
+      open: optional
+      standard: true
+      hardened: true
+      maximum: true
+    violation: error
+    waivable: false
+    status: implemented
+    check: env_bool_required_true
+    audit: [B6]
+
+  - id: token.access_ttl_max
+    layer: api
+    title: Максимальный срок access-токена (минуты)
+    kind: value
+    env_key: API_ACCESS_TOKEN_LIFETIME
+    compare: max_int
+    profiles:
+      open: null
+      standard: 60
+      hardened: 30
+      maximum: 15
+    violation: warning
+    waivable: false
+    status: partial
+    check: env_int_max
+    audit: [B6]
+
+  - id: token.remember_me_max
+    layer: api
+    title: Максимальный срок refresh при «Запомнить меня» (минуты)
+    kind: value
+    env_key: API_REMEMBER_ME_REFRESH_TOKEN_LIFETIME
+    compare: max_int
+    profiles:
+      open: 10080
+      standard: 10080
+      hardened: 1440
+      maximum: 0
+    violation: warning
+    waivable: false
+    status: partial
+    check: env_int_max
+    audit: [B6]
+
+  - id: token.rotate_refresh
+    layer: api
+    title: Ротация refresh-токенов
+    kind: switch
+    profiles:
+      open: false
+      standard: true
+      hardened: true
+      maximum: true
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [B6]
+
+  - id: token.revoke_on_logout
+    layer: api
+    title: Отзыв refresh при выходе
+    kind: switch
+    profiles:
+      open: false
+      standard: true
+      hardened: true
+      maximum: true
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [B6]
+
+  # --- API / ADP / registration ---
+  - id: api.default_permission
+    layer: api
+    title: Права по умолчанию требуют входа
+    kind: policy
+    profiles:
+      open: authenticated
+      standard: authenticated
+      hardened: authenticated
+      maximum: authenticated
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+
+  - id: api.anonymous_endpoints
+    layer: api
+    title: Анонимные эндпоинты
+    kind: policy
+    profiles:
+      open: unrestricted
+      standard: core_allowlist
+      hardened: core_allowlist_plus_waivers
+      maximum: login_and_health_only
+    violation: error
+    waivable: true
+    status: implemented
+    check: anonymous_endpoints
+
+  - id: api.admin_only_bulk_ops
+    layer: api
+    title: Массовые операции только для глобального админа
+    kind: policy
+    profiles:
+      open: recommended
+      standard: required
+      hardened: required
+      maximum: required
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [K1]
+
+  - id: api.task_status_owner
+    layer: api
+    title: Статус фоновой задачи только инициатору
+    kind: policy
+    profiles:
+      open: false
+      standard: true
+      hardened: true
+      maximum: true
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [C1]
+
+  - id: api.object_permissions
+    layer: api
+    title: Object-level permissions
+    kind: policy
+    profiles:
+      open: false
+      standard: false
+      hardened: required
+      maximum: required_auto
+    violation: error
+    waivable: false
+    status: partial
+    check: object_permissions
+    audit: [C8]
+
+  - id: api.docs_exposure
+    layer: api
+    title: Доступность документации API
+    kind: switch
+    profiles:
+      open: open
+      standard: closed_outside_dev
+      hardened: closed
+      maximum: unregistered
+    violation: error
+    waivable: false
+    status: partial
+    check: docs_exposure
+    audit: [C9]
+
+  - id: api.public_id_only
+    layer: api
+    title: Во внешних URL только public_id
+    kind: policy
+    profiles:
+      open: recommended
+      standard: recommended
+      hardened: required
+      maximum: required
+    violation: warning
+    waivable: false
+    status: planned
+    check: deferred
+    audit: [H1]
+
+  - id: adp.default_role_view_grants
+    layer: api
+    title: Права _view у роли без групп
+    kind: policy
+    env_key: API_ADP_DEFAULT_VIEW_GRANTS
+    profiles:
+      open: granted
+      standard: granted
+      hardened: denied
+      maximum: denied
+    violation: error
+    waivable: false
+    status: implemented
+    check: adp_default_role_view_grants
+    audit: [C7]
+
+  - id: registration.mode
+    layer: api
+    title: Режим регистрации
+    kind: value
+    env_key: API_REGISTRATION_MODE
+    profiles:
+      open: any
+      standard: any
+      hardened: invitation_or_closed
+      maximum: closed
+    violation: error
+    waivable: true
+    status: partial
+    check: registration_mode_min
+    audit: [C9]
+
+  - id: password.policy
+    layer: api
+    title: Политика паролей (минимальная длина)
+    kind: value
+    env_key: API_PASSWORD_MIN_LENGTH
+    compare: min_int
+    profiles:
+      open: 6
+      standard: 8
+      hardened: 12
+      maximum: 14
+    violation: error
+    waivable: false
+    status: implemented
+    check: password_policy
+    audit: [C9]
+
+  # --- Transport ---
+  - id: transport.https_required
+    layer: deployment
+    title: Обязательный HTTPS / HSTS
+    kind: switch
+    profiles:
+      open: false
+      standard: false
+      hardened: true
+      maximum: true
+    violation: error
+    waivable: false
+    status: planned
+    check: deferred
+
+  - id: cors.explicit_origins
+    layer: api
+    title: Явный список CORS origins
+    kind: value
+    env_key: CORS_ALLOWED_ORIGINS
+    profiles:
+      open: dev_defaults
+      standard: required_outside_dev
+      hardened: always_required
+      maximum: always_required_no_regex
+    violation: error
+    waivable: false
+    status: implemented
+    check: nonempty_outside_dev
+    audit: [B7]
+
+  - id: csrf.trusted_origins
+    layer: api
+    title: CSRF_TRUSTED_ORIGINS
+    kind: value
+    env_key: CSRF_TRUSTED_ORIGINS
+    profiles:
+      open: optional
+      standard: required_outside_dev
+      hardened: required_outside_dev
+      maximum: always_required
+    violation: error
+    waivable: false
+    status: implemented
+    check: nonempty_outside_dev
+    audit: [C2]
+
+  - id: csp.strict
+    layer: api
+    title: Строгая политика CSP
+    kind: policy
+    env_key: API_CSP_MODE
+    profiles:
+      open: as_is
+      standard: as_is
+      hardened: no_unsafe
+      maximum: no_unsafe_plus_externals
+    violation: warning
+    waivable: false
+    status: partial
+    check: csp_strict
+    audit: [C11]
+
+  - id: headers.baseline
+    layer: api
+    title: Базовые security headers
+    kind: switch
+    profiles:
+      open: true
+      standard: true
+      hardened: true
+      maximum: true
+    violation: warning
+    waivable: false
+    status: implemented
+    check: code_fixed
+
+  # --- Realtime ---
+  - id: realtime.token_type
+    layer: realtime
+    title: Тип токена WebSocket/SSE
+    kind: policy
+    profiles:
+      open: any_valid
+      standard: access_only
+      hardened: access_only
+      maximum: access_only
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [B4]
+
+  - id: realtime.origin_validation
+    layer: realtime
+    title: Проверка Origin для WebSocket
+    kind: switch
+    profiles:
+      open: false
+      standard: true
+      hardened: true
+      maximum: true
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [B4]
+
+  - id: realtime.device_binding
+    layer: realtime
+    title: Device binding на realtime
+    kind: switch
+    profiles:
+      open: false
+      standard: true
+      hardened: true
+      maximum: true
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [B4]
+
+  - id: realtime.message_limits
+    layer: realtime
+    title: Лимиты размера/частоты realtime-сообщений
+    kind: policy
+    env_key: API_REALTIME_MAX_MESSAGE_BYTES
+    compare: max_int
+    profiles:
+      open: none
+      standard: size
+      hardened: size_and_rate
+      maximum: size_rate_disconnect
+    violation: warning
+    waivable: false
+    status: partial
+    check: code_fixed
+
+  - id: messenger.access_default
+    layer: api
+    title: Доступ к мессенджеру по умолчанию
+    kind: policy
+    profiles:
+      open: allow
+      standard: deny
+      hardened: deny
+      maximum: deny
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [B3]
+
+  # --- Media ---
+  - id: media.signed_urls_ttl
+    layer: media
+    title: TTL подписанных ссылок (секунды)
+    kind: value
+    env_key: MEDIA_URL_EXPIRATION
+    compare: max_int
+    profiles:
+      open: 3600
+      standard: 3600
+      hardened: 900
+      maximum: 300
+    violation: warning
+    waivable: false
+    status: implemented
+    check: env_int_max
+
+  - id: media.content_validation
+    layer: media
+    title: Проверка содержимого загружаемых файлов
+    kind: policy
+    env_key: MEDIA_API_CONTENT_VALIDATION
+    profiles:
+      open: extension
+      standard: extension_and_magic
+      hardened: extension_and_magic
+      maximum: extension_magic_av
+    violation: error
+    waivable: true
+    status: partial
+    check: media_content_validation
+    audit: [C5]
+
+  - id: media.upload_rate
+    layer: media
+    title: Лимит частоты загрузок (обычный пользователь)
+    kind: value
+    env_key: MEDIA_API_UPLOAD_RATE
+    compare: max_rate
+    profiles:
+      open: 100/minute
+      standard: 30/minute
+      hardened: 15/minute
+      maximum: 10/minute
+    violation: warning
+    waivable: false
+    status: implemented
+    check: env_rate_max
+
+  - id: media.upload_rate_admin
+    layer: media
+    title: Лимит частоты загрузок (глобальный администратор); nginx /upload/ не ниже этого
+    kind: value
+    env_key: MEDIA_API_UPLOAD_RATE_ADMIN
+    compare: max_rate
+    profiles:
+      open: 300/minute
+      standard: 120/minute
+      hardened: 60/minute
+      maximum: 30/minute
+    violation: warning
+    waivable: false
+    status: implemented
+    check: env_rate_max
+
+  - id: internal.write_size_limit
+    layer: media
+    title: Лимит размера InternalWrite
+    kind: switch
+    profiles:
+      open: false
+      standard: true
+      hardened: true
+      maximum: true
+    violation: error
+    waivable: false
+    status: implemented
+    check: code_fixed
+    audit: [C4]
+
+  - id: internal.trusted_proxies
+    layer: media
+    title: Доверенные прокси для internal media
+    kind: policy
+    profiles:
+      open: none
+      standard: none
+      hardened: required
+      maximum: required_plus_separate_key
+    violation: error
+    waivable: false
+    status: implemented
+    check: internal_trusted_proxies
+    audit: [C3]
+
+  # --- Infra ---
+  - id: secrets.no_defaults
+    layer: deployment
+    title: Запрет шаблонных секретов
+    kind: switch
+    env_key: API_SECRET_KEY
+    profiles:
+      open: allow_template
+      standard: forbid_template
+      hardened: forbid_template_min_length
+      maximum: forbid_template_min_length_separate_jwt
+    violation: error
+    waivable: false
+    status: implemented
+    check: secrets_no_defaults
+    audit: [K3]
+
+  - id: broker.redis_password
+    layer: deployment
+    title: Пароль Redis
+    kind: switch
+    profiles:
+      open: optional
+      standard: recommended
+      hardened: required
+      maximum: required_no_publish
+    violation: error
+    waivable: false
+    status: implemented
+    check: broker_redis_password
+    audit: [B5]
+
+  - id: db.postgres_password
+    layer: deployment
+    title: Пароль PostgreSQL не из шаблона
+    kind: switch
+    profiles:
+      open: optional
+      standard: recommended
+      hardened: required
+      maximum: required
+    violation: error
+    waivable: false
+    status: implemented
+    check: db_postgres_password
+
+  - id: search.master_key
+    layer: deployment
+    title: Ключ поиска не из шаблона
+    kind: switch
+    env_key: MEILI_MASTER_KEY
+    profiles:
+      open: allow_template
+      standard: recommended
+      hardened: required
+      maximum: required
+    violation: error
+    waivable: false
+    status: implemented
+    check: search_master_key
+
+  - id: llm.listen_loopback
+    layer: deployment
+    title: Локальный LLM API только на loopback
+    kind: policy
+    env_key: OLLAMA_HOST
+    profiles:
+      open: any
+      standard: recommended
+      hardened: required
+      maximum: required
+    violation: error
+    waivable: false
+    status: implemented
+    check: llm_listen_loopback
+
+  - id: deploy.docker_nginx_parity
+    layer: deployment
+    title: Паритет Docker nginx с host
+    kind: policy
+    profiles:
+      open: optional
+      standard: optional
+      hardened: required
+      maximum: required
+    violation: warning
+    waivable: false
+    status: implemented
+    check: docker_nginx_parity
+    audit: [C6]
+
+  - id: jupyter.exposure
+    layer: deployment
+    title: Доступность Jupyter
+    kind: value
+    env_key: ERGO_JUPYTER
+    profiles:
+      open: any
+      standard: not_open_lan_without_auth
+      hardened: local_or_proxied_auth
+      maximum: none
+    violation: warning
+    waivable: false
+    status: implemented
+    check: jupyter_exposure
+
+  - id: logging.client_browser
+    layer: client
+    title: Клиентский browser-log
+    kind: switch
+    env_key: CLIENT_BROWSER_LOG_ENABLED
+    profiles:
+      open: true
+      standard: true
+      hardened: true_no_pii
+      maximum: false
+    violation: warning
+    waivable: false
+    status: implemented
+    check: client_browser_log
+
+  - id: client.dev_tools
+    layer: api
+    title: Режим разработчика (просмотр как пользователь)
+    kind: value
+    env_key: ERGO_DEV_TOOLS
+    profiles:
+      open: false
+      standard: false
+      hardened: false
+      maximum: false
+    violation: error
+    waivable: false
+    status: implemented
+    check: dev_tools
+
+  - id: audit.retention_min
+    layer: api
+    title: Минимальный срок хранения аудита (дни)
+    kind: value
+    env_key: API_AUDIT_RETENTION_DAYS
+    compare: min_int
+    profiles:
+      open: null
+      standard: null
+      hardened: 90
+      maximum: 365
+    violation: warning
+    waivable: false
+    status: planned
+    check: env_int_min

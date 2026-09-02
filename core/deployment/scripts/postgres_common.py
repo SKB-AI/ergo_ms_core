@@ -52,6 +52,8 @@ _CONF_SETTING_ENV_KEYS = (
     ('POSTGRES_MAX_PARALLEL_WORKERS', 'max_parallel_workers'),
     ('POSTGRES_MAX_PARALLEL_WORKERS_PER_GATHER', 'max_parallel_workers_per_gather'),
     ('POSTGRES_MAX_PARALLEL_MAINTENANCE_WORKERS', 'max_parallel_maintenance_workers'),
+    ('POSTGRES_MAX_WAL_SIZE', 'max_wal_size'),
+    ('POSTGRES_WAL_COMPRESSION', 'wal_compression'),
 )
 _DEFAULT_CONF_SETTINGS = {
     'max_connections': '100',
@@ -65,6 +67,8 @@ _DEFAULT_CONF_SETTINGS = {
     'max_parallel_workers': '8',
     'max_parallel_workers_per_gather': '4',
     'max_parallel_maintenance_workers': '4',
+    'max_wal_size': '2GB',
+    'wal_compression': 'lz4',
 }
 PG_FTP_SOURCE = 'https://ftp.postgresql.org/pub/source/'
 EDB_WINDOWS_URL = (
@@ -84,13 +88,21 @@ def _read_postgres_env(name: str, default: str = '') -> str:
 
 
 def our_service_windows(root: Path | None = None) -> str:
-    _ = root
-    return _read_postgres_env('POSTGRES_SERVICE_WINDOWS', OUR_SERVICE_WINDOWS)
+    explicit = _read_postgres_env('POSTGRES_SERVICE_WINDOWS', '')
+    if explicit:
+        return explicit
+    from service_names import names_from_root
+
+    return names_from_root(root).postgres
 
 
 def our_service_linux(root: Path | None = None) -> str:
-    _ = root
-    return _read_postgres_env('POSTGRES_SERVICE_LINUX', OUR_SERVICE_LINUX)
+    explicit = _read_postgres_env('POSTGRES_SERVICE_LINUX', '')
+    if explicit:
+        return explicit
+    from service_names import names_from_root
+
+    return names_from_root(root).postgres
 
 
 def service_display_name(root: Path | None = None) -> str:
@@ -112,13 +124,54 @@ def service_restart_delay_ms(root: Path | None = None) -> int:
 
 def load_portable_conf_settings(root: Path | None = None) -> dict[str, str]:
     """Параметры нагрузки для postgresql.conf (env/postgres.env)."""
-    _ = root
     settings = dict(_DEFAULT_CONF_SETTINGS)
     for env_key, conf_key in _CONF_SETTING_ENV_KEYS:
         value = _read_postgres_env(env_key, settings[conf_key])
         if value:
             settings[conf_key] = value
+    if root is not None:
+        settings = _sanitize_wal_compression(root, settings)
     return settings
+
+
+def _pg_config_configure(root: Path) -> str:
+    binary = postgres_bin(root, 'pg_config')
+    if not binary.is_file():
+        return ''
+    try:
+        result = subprocess.run(
+            [str(binary), '--configure'],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ''
+    return result.stdout or ''
+
+
+def _sanitize_wal_compression(root: Path, settings: dict[str, str]) -> dict[str, str]:
+    value = (settings.get('wal_compression') or '').strip().lower()
+    if value in ('', 'pglz', 'on', 'off'):
+        return settings
+    flags = _pg_config_configure(root)
+    built = {
+        'lz4': '--with-lz4' in flags,
+        'zstd': '--with-zstd' in flags,
+    }
+    if built.get(value):
+        return settings
+    fallback = 'pglz'
+    print(
+        format_console(
+            'warning',
+            t('postgres_wal_compression_fallback', value=value, fallback=fallback),
+        )
+    )
+    adjusted = dict(settings)
+    adjusted['wal_compression'] = fallback
+    return adjusted
 
 
 def postgres_packages_dir(root: Path) -> Path:
@@ -436,7 +489,12 @@ def _patch_conf_file(path: Path, replacements: dict[str, str]) -> None:
         stripped = line.lstrip()
         replaced = False
         for key, value in replacements.items():
-            if stripped.startswith(f'{key}') and (stripped.startswith(f'{key} ') or stripped.startswith(f'{key}=') or stripped.startswith(f'#{key}')):
+            if (
+                stripped.startswith(f'{key} ')
+                or stripped.startswith(f'{key}=')
+                or stripped.startswith(f'{key}\t')
+                or stripped.startswith(f'#{key}')
+            ):
                 out.append(f"{key} = {value}")
                 seen.add(key)
                 replaced = True
@@ -450,13 +508,17 @@ def _patch_conf_file(path: Path, replacements: dict[str, str]) -> None:
 
 
 def _configure_cluster(root: Path, port: int, bind: str) -> None:
+    from log_env import log_basename, resolve_logs_dir
+
     data = postgres_data_dir(root)
+    logs_dir = resolve_logs_dir(root)
+    logs_dir.mkdir(parents=True, exist_ok=True)
     replacements = {
         'listen_addresses': f"'{bind}'",
         'port': str(port),
         'logging_collector': 'on',
-        'log_directory': f"'{(postgres_packages_dir(root) / 'logs').as_posix()}'",
-        'log_filename': "'postgresql.log'",
+        'log_directory': f"'{logs_dir.as_posix()}'",
+        'log_filename': f"'{log_basename('POSTGRES', root)}'",
     }
     for conf_key, value in load_portable_conf_settings(root).items():
         # Строковые размеры (128MB) — без кавычек; числа — как есть.
@@ -481,6 +543,36 @@ def effective_portable_port(root: Path, port: int | None = None) -> int:
     return resolve_portable_listen_port(root)
 
 
+def _cluster_owner_ids(root: Path) -> tuple[int, int] | None:
+    """Владелец проекта: initdb/pg_ctl нельзя запускать от root."""
+    if os.name == 'nt' or not hasattr(os, 'geteuid') or os.geteuid() != 0:
+        return None
+    uid, gid = Path(root).stat().st_uid, Path(root).stat().st_gid
+    if uid == 0:
+        return None
+    return uid, gid
+
+
+def _chown_postgres_packages(root: Path) -> None:
+    owner = _cluster_owner_ids(root)
+    if owner is None:
+        return
+    uid, gid = owner
+    pkg = postgres_packages_dir(root)
+    if not pkg.is_dir():
+        return
+    try:
+        from lifecycle.host.privilege import restore_project_ownership  # noqa: WPS433
+        restore_project_ownership(root, pkg)
+        return
+    except ImportError:
+        pass
+    for dirpath, dirnames, filenames in os.walk(pkg):
+        os.chown(dirpath, uid, gid, follow_symlinks=False)
+        for name in (*dirnames, *filenames):
+            os.chown(Path(dirpath) / name, uid, gid, follow_symlinks=False)
+
+
 def _run_pg(
     root: Path,
     tool: str,
@@ -493,14 +585,41 @@ def _run_pg(
     if not binary.is_file():
         raise RuntimeError(t('postgres_tool_not_found', tool=tool, binary=binary))
     full_env = {**os.environ, **(env or {})}
-    return subprocess.run(
+    run_kwargs: dict[str, object] = {}
+    owner = _cluster_owner_ids(root)
+    if owner is not None:
+        _chown_postgres_packages(root)
+        run_kwargs['user'] = owner[0]
+        run_kwargs['group'] = owner[1]
+        try:
+            import pwd
+
+            pw = pwd.getpwuid(owner[0])
+            full_env['HOME'] = pw.pw_dir
+            full_env['USER'] = pw.pw_name
+            full_env['LOGNAME'] = pw.pw_name
+        except KeyError:
+            pass
+    result = subprocess.run(
         [str(binary), *args],
         capture_output=True,
         text=True,
-        check=check,
+        check=False,
         env=full_env,
         timeout=120,
+        **run_kwargs,
     )
+    if check and result.returncode != 0:
+        detail = (result.stderr or result.stdout or '').strip()
+        if detail:
+            print(detail, file=sys.stderr)
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            result.args,
+            output=result.stdout,
+            stderr=result.stderr,
+        )
+    return result
 
 
 def _initdb_if_needed(root: Path, user: str, password: str, port: int, bind: str) -> None:
@@ -620,6 +739,8 @@ def ensure_databases(root: Path, port: int | None = None) -> None:
     else:
         print(format_console('skip', t('postgres_db_exists', dbname=dbname)))
 
+    _ensure_pg_trgm_in_core(_exec_sql, root, dbname)
+
     for extra in load_extra_db_sections(root):
         ename = extra['name']
         euser = extra['user']
@@ -646,6 +767,35 @@ def ensure_databases(root: Path, port: int | None = None) -> None:
             print(format_console('ok', t('postgres_db_created', dbname=ename)))
 
     print_db_access_summary(root, port=port_i)
+
+
+def _pg_trgm_control_file(root: Path) -> Path | None:
+    base = postgres_packages_dir(root)
+    candidates = (
+        base / 'share' / 'extension' / 'pg_trgm.control',
+        base / 'share' / 'postgresql' / 'extension' / 'pg_trgm.control',
+        base / 'pgsql' / 'share' / 'extension' / 'pg_trgm.control',
+    )
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
+def _ensure_pg_trgm_in_core(exec_sql, root: Path, dbname: str) -> None:
+    """pg_trgm в схеме core: Django не кладёт public в search_path."""
+    if _pg_trgm_control_file(root) is None:
+        return
+    exec_sql(
+        'CREATE SCHEMA IF NOT EXISTS core; '
+        'DO $$ BEGIN '
+        "IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') THEN "
+        'ALTER EXTENSION pg_trgm SET SCHEMA core; '
+        'ELSE CREATE EXTENSION pg_trgm SCHEMA core; '
+        'END IF; END $$;',
+        database=dbname,
+    )
+    print(format_console('ok', t('postgres_pg_trgm_in_core')))
 
 
 def print_db_access_summary(root: Path, port: int | None = None) -> None:

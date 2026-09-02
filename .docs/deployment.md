@@ -19,7 +19,7 @@ ergoms status
 ergoms uninstall-services --purge
 ```
 
-Команды **`install-services`** и **`uninstall-services`** управляют службами ОС одной логикой: ядро ставит/снимает свои unit’ы, а подключённые модули с `host_lifecycle.yaml` — свои (`install_service_commands` / `uninstall_service_commands`) без правок ядра под каждый модуль. Флаг **`--purge`** у uninstall дополнительно удаляет связанные данные конфигурации — используйте только если уверены, что конфигурацию можно удалить. Portable-пакет модуля (бинарник) uninstall-services не трогает. Полный каталог модульных точек расширения — [modules.md](modules.md).
+Команды **`install-services`** и **`uninstall-services`** управляют службами ОС одной логикой: ядро ставит/снимает свои unit’ы, а подключённые модули с `host_lifecycle.yaml` — свои (`install_service_commands` / `uninstall_service_commands`) без правок ядра под каждый модуль. При `ERGO_DB=portable_postgres` `install-services` также регистрирует службу portable PostgreSQL (как Redis и Meilisearch при своих режимах). То же делает `setup-full` после установки кластера. Флаг **`--purge`** у uninstall дополнительно удаляет связанные данные конфигурации — используйте только если уверены, что конфигурацию можно удалить. Portable-пакет модуля (бинарник) uninstall-services не трогает. Полный каталог модульных точек расширения — [modules.md](modules.md).
 
 Для первичной настройки CLI в PATH:
 
@@ -30,7 +30,7 @@ ergoms start
 ergoms status
 ```
 
-CLI лежит в `core/deployment/bin`. Команда `uninstall-cli` напоминает удалить симлинки вручную — см. [cli.md](cli.md).
+CLI лежит в `core/deployment/bin`. На Linux `install-cli` ставит симлинк `/usr/local/bin/ergoms` на этот файл (нужны права root, если каталог недоступен на запись). `uninstall-cli` снимает только эту ссылку, если она указывает на текущий проект; сами файлы в `bin` не удаляются. См. [cli.md](cli.md).
 
 ### Низкоуровневые скрипты (редко)
 

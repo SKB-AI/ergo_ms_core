@@ -95,10 +95,13 @@ const searchQuery = ref('')
 | `label` | — | подпись над полем (AuditLog, ProfileChangeRequests) |
 | `id` | auto | для `<label for>` и a11y |
 | `showIcon` | `false` | `:show-icon="true"` — иконка `Search` слева |
+| `clearable` | `true` | `:clearable="false"` — скрыть крестик очистки |
 | `background` | `'primary'` | `'secondary'` — admin toolbar |
 | `focusBorder` | `'default'` | `'primary'` — border без shadow при focus (admin) |
 | `layout` | `'grow'` | `'fixed'` — admin toolbar (`flex: 0 1 280px`) |
 | `disabled` | `false` | блокировка ввода |
+
+Крестик виден, пока в поле есть текст; клик очищает значение (`update:modelValue` / `input` / `clear`) и возвращает фокус в input. Нативный clear у `type="search"` скрыт.
 
 ## CSS-переменные
 

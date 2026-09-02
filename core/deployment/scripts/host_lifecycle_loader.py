@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shlex
+import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
@@ -27,6 +30,8 @@ from console_tags import configure_stdio_utf8, format_console  # noqa: E402
 from lifecycle.modules.catalog import ModuleCatalog  # noqa: E402
 
 HOST_LIFECYCLE_FILENAME = 'host_lifecycle.yaml'
+_INSTALL_MODULE_SERVICE = 'install-module-service'
+_UNINSTALL_MODULE_SERVICE = 'uninstall-module-service'
 
 
 @dataclass(frozen=True)
@@ -45,6 +50,7 @@ class HostLifecycleAggregate:
     uninstall_service_commands: list[str] = field(default_factory=list)
     service_units: list[str] = field(default_factory=list)
     modules: list[str] = field(default_factory=list)
+    skipped_process_install_commands: list[str] = field(default_factory=list)
 
 
 def _warn(message: str) -> None:
@@ -67,6 +73,63 @@ def _as_str_list(value: Any) -> list[str]:
                 items.append(text)
         return items
     return []
+
+
+def _safe_module_token(name: str) -> str:
+    return ''.join(ch if ch.isalnum() or ch == '_' else '_' for ch in name)
+
+
+def parse_module_process_service_command(cmd: str) -> tuple[str, str, str] | None:
+    """Разбор install/uninstall-module-service: (install|uninstall, module, kind)."""
+    try:
+        parts = shlex.split(cmd)
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    verb = parts[0]
+    if verb == _INSTALL_MODULE_SERVICE:
+        action = 'install'
+    elif verb == _UNINSTALL_MODULE_SERVICE:
+        action = 'uninstall'
+    else:
+        return None
+    module = ''
+    kind = 'api'
+    index = 1
+    while index < len(parts):
+        token = parts[index]
+        if token.startswith('--module='):
+            module = token.split('=', 1)[1]
+        elif token == '--module' and index + 1 < len(parts):
+            index += 1
+            module = parts[index]
+        elif token.startswith('--kind='):
+            kind = token.split('=', 1)[1]
+        elif token == '--kind' and index + 1 < len(parts):
+            index += 1
+            kind = parts[index]
+        index += 1
+    module = module.strip()
+    kind = kind.strip() or 'api'
+    if not module:
+        return None
+    return action, module, kind
+
+
+def process_service_unit_name(module: str, kind: str, prefix: str | None = None) -> str:
+    from service_names import ServiceNames
+
+    return ServiceNames(prefix).module(module, kind)
+
+
+def is_module_process_service_unit(unit: str, module: str) -> bool:
+    short = unit[: -len('.service')] if unit.endswith('.service') else unit
+    return short in (
+        process_service_unit_name(module, 'api'),
+        process_service_unit_name(module, 'worker'),
+        process_service_unit_name(module, 'beat'),
+    )
 
 
 def _parse_file(path: Path, *, module_dir_name: str) -> HostLifecycleEntry | None:
@@ -156,13 +219,42 @@ def load_host_lifecycle_entries(project_root: str) -> tuple[HostLifecycleEntry, 
     return tuple(entries)
 
 
+def _kind_from_process_unit(unit: str, module: str) -> str | None:
+    short = unit[: -len('.service')] if unit.endswith('.service') else unit
+    if short == process_service_unit_name(module, 'api'):
+        return 'api'
+    if short == process_service_unit_name(module, 'worker'):
+        return 'worker'
+    if short == process_service_unit_name(module, 'beat'):
+        return 'beat'
+    return None
+
+
+def allows_module_kind(catalog: ModuleCatalog, host_profile, module: str, kind: str) -> bool:
+    if not catalog.allows_module_process_os_services(module):
+        return False
+    if kind == 'api':
+        return host_profile.wants('module_api')
+    if kind == 'worker':
+        return host_profile.wants('module_worker')
+    if kind == 'beat':
+        return host_profile.wants('module_beat')
+    return True
+
+
 def aggregate_host_lifecycle(project_root: Path | str) -> HostLifecycleAggregate:
-    entries = load_host_lifecycle_entries(str(Path(project_root).resolve()))
+    root = Path(project_root).resolve()
+    entries = load_host_lifecycle_entries(str(root))
+    catalog = ModuleCatalog.from_project_env(root)
+    from lifecycle.host_profile import resolve_host_profile_from_root  # noqa: WPS433
+
+    host_profile = resolve_host_profile_from_root(root)
     agg = HostLifecycleAggregate()
     seen_stop: set[str] = set()
     seen_install: set[str] = set()
     seen_uninstall: set[str] = set()
     seen_units: set[str] = set()
+    seen_skipped: set[str] = set()
 
     for entry in entries:
         agg.modules.append(entry.module)
@@ -171,6 +263,14 @@ def aggregate_host_lifecycle(project_root: Path | str) -> HostLifecycleAggregate
                 seen_stop.add(cmd)
                 agg.stop_commands.append(cmd)
         for cmd in entry.install_service_commands:
+            parsed = parse_module_process_service_command(cmd)
+            if parsed is not None:
+                _action, _module, kind = parsed
+                if not allows_module_kind(catalog, host_profile, entry.module, kind):
+                    if cmd not in seen_skipped:
+                        seen_skipped.add(cmd)
+                        agg.skipped_process_install_commands.append(cmd)
+                    continue
             if cmd not in seen_install:
                 seen_install.add(cmd)
                 agg.install_service_commands.append(cmd)
@@ -179,11 +279,87 @@ def aggregate_host_lifecycle(project_root: Path | str) -> HostLifecycleAggregate
                 seen_uninstall.add(cmd)
                 agg.uninstall_service_commands.append(cmd)
         for unit in entry.service_units:
+            kind = _kind_from_process_unit(unit, entry.module)
+            if kind is not None and not allows_module_kind(
+                catalog, host_profile, entry.module, kind
+            ):
+                continue
             if unit not in seen_units:
                 seen_units.add(unit)
                 agg.service_units.append(unit)
 
     return agg
+
+
+def unit_is_installed(name: str) -> bool:
+    """Есть ли OS-служба: linked systemd unit или служба Windows."""
+    unit = name if name.endswith('.service') else f'{name}.service'
+    short = unit[: -len('.service')]
+    if os.name == 'nt':
+        result = subprocess.run(
+            ['sc', 'query', short],
+            capture_output=True,
+            check=False,
+        )
+        return result.returncode == 0
+    path = Path('/etc/systemd/system') / unit
+    if path.is_file() or path.is_symlink():
+        return True
+    result = subprocess.run(
+        ['systemctl', 'list-unit-files', '--type=service', '--no-legend', unit],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return bool((result.stdout or '').strip())
+
+
+def collect_uninstall_service_commands(project_root: Path | str) -> list[str]:
+    """uninstall_service_commands только для модулей, у которых unit уже стоит.
+
+    Если в записи нет service_units — команды всё равно выполняем (скрипт сам
+    разбирается, что удалять).
+    """
+    seen: set[str] = set()
+    commands: list[str] = []
+    for entry in load_host_lifecycle_entries(str(Path(project_root).resolve())):
+        if not entry.uninstall_service_commands:
+            continue
+        if entry.service_units and not any(unit_is_installed(unit) for unit in entry.service_units):
+            continue
+        for cmd in entry.uninstall_service_commands:
+            if cmd in seen:
+                continue
+            seen.add(cmd)
+            commands.append(cmd)
+    return commands
+
+
+def collect_stale_module_process_uninstall_commands(project_root: Path | str) -> list[str]:
+    """Снять API/worker OS-службы модуля, если текущий режим их больше не ставит."""
+    root = Path(project_root).resolve()
+    catalog = ModuleCatalog.from_project_env(root)
+    from lifecycle.host_profile import resolve_host_profile_from_root  # noqa: WPS433
+
+    host_profile = resolve_host_profile_from_root(root)
+    seen: set[str] = set()
+    commands: list[str] = []
+    for entry in load_host_lifecycle_entries(str(root)):
+        for cmd in entry.uninstall_service_commands:
+            parsed = parse_module_process_service_command(cmd)
+            if parsed is None or parsed[0] != 'uninstall':
+                continue
+            kind = parsed[2]
+            if allows_module_kind(catalog, host_profile, entry.module, kind):
+                continue
+            unit = process_service_unit_name(entry.module, kind)
+            if not unit_is_installed(unit):
+                continue
+            if cmd in seen:
+                continue
+            seen.add(cmd)
+            commands.append(cmd)
+    return commands
 
 
 def dump_host_lifecycle_json(project_root: Path | str) -> str:
@@ -206,6 +382,11 @@ def main(argv: list[str] | None = None) -> int:
         action='store_true',
         help='Вывести stop_commands по одному на строку',
     )
+    parser.add_argument(
+        '--stop-commands-paired',
+        action='store_true',
+        help='stop_commands с service_units: cmd<TAB>unit1 unit2 (для ergoms stop)',
+    )
     args = parser.parse_args(argv)
 
     root = args.root
@@ -219,6 +400,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json:
         print(dump_host_lifecycle_json(root))
+        return 0
+
+    if args.stop_commands_paired:
+        for entry in load_host_lifecycle_entries(str(root)):
+            units = ' '.join(entry.service_units)
+            for cmd in entry.stop_commands:
+                print(f'{cmd}\t{units}')
         return 0
 
     agg = aggregate_host_lifecycle(root)

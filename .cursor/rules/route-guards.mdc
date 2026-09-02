@@ -1,5 +1,9 @@
 ---
 description: Route guards клиента — routeGuard.js, авто-discovery, порядок в beforeEach
+globs:
+  - "**/routeGuard.js"
+  - "core/client/src/modules/routing/**"
+  - "core/client/src/js/session/**"
 alwaysApply: false
 ---
 # Route guards (клиент)
@@ -17,11 +21,13 @@ export { organizationGuard as routeGuard }
 export default organizationGuard
 ```
 
-Экспорт: named `routeGuard` или `default` — **async-функция** `(to, from, next)` в стиле Vue Router. Опционально числовой `order` или `routeGuardOrder` (по умолчанию 100) задаёт порядок в цепочке beforeEach.
+Экспорт: named `routeGuard` или `default` — **async-функция** `(to, from, next?)`. Ядро вызывает её с локальным `next` (не callback Vue Router). Предпочтительно возвращать результат: `true` / ничего — пропустить, `false` — отменить, объект или путь — редирект. Опционально числовой `order` или `routeGuardOrder` (по умолчанию 100) задаёт порядок в цепочке beforeEach.
 
 Подхват — [`RouteGuardsManager.js`](../../core/client/src/modules/routing/RouteGuardsManager.js) через [`ModuleLoader.js`](../../core/client/src/modules/core/ModuleLoader.js). Применение — `beforeEach` в [`routers.js`](../../core/client/src/js/routers.js).
 
 Ядро: `core/client/src/core/**/js/routeGuard.js` (опционально).
+
+Страницы входа (`meta.startRoute`, имя `Login`) в [`routers.js`](../../core/client/src/js/routers.js) выходят из `beforeEach` **до** session-scope и module guards. Если cookie `ergo_session` есть, сначала `whenSessionReady()`, иначе форма входа мигнёт на F5. Маршрут `Login` обязан быть в matcher — [`nginx-spa-boot.mdc`](nginx-spa-boot.mdc).
 
 ## Порядок в beforeEach
 
@@ -32,12 +38,13 @@ export default organizationGuard
 
 Модульный `routeGuard` **не обязан** повторно вызывать `runSessionScopeGuard`, если достаточно platform-проверки. Владелец scope может добавить доменную валидацию в своём guard после шага 2.
 
-При redirect guard возвращает объект маршрута через `next({ name: '...' })` — ядро перехватывает object-redirect и прерывает цепочку.
+При redirect guard возвращает объект маршрута (`return { name: '...' }` или `next({ name: '...' })`) — ядро перехватывает object-redirect и прерывает цепочку. Platform `beforeEach` в [`routers.js`](../../core/client/src/js/routers.js) не использует третий аргумент `next` Vue Router.
 
 ## Связанные правила
 
 | Тема | Файл |
 |------|------|
 | Права на маршруты (UX) | [`permission_rules.mdc`](permission_rules.mdc) |
+| Вход за nginx, Login в matcher | [`nginx-spa-boot.mdc`](nginx-spa-boot.mdc) |
 | Архитектура hook-файлов | [`struct.mdc`](struct.mdc) |
 | Модули | [`modules.mdc`](modules.mdc) |

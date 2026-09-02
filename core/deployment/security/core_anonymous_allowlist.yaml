@@ -1,0 +1,110 @@
+# Легитимные анонимные точки ядра (BaseAPIViewPublicMixin / AllowAny / TokenRefreshView).
+# Только core — без имён модулей. Сканер: checkers/anonymous_endpoints.py
+# Новый публичный view: BaseAPIViewPublicMixin + строка здесь.
+version: 1
+
+view_classes:
+  - name: LogoutView
+    path_prefixes:
+      - cms/adp/logout/
+    maximum_ok: false
+
+  - name: PasswordResetSettingsView
+    path_prefixes:
+      - cms/adp/password-reset-settings/
+    maximum_ok: false
+
+  - name: ResetPasswordView
+    path_prefixes:
+      - cms/adp/reset-password/
+    maximum_ok: false
+
+  - name: SendConfirmationCodeView
+    path_prefixes:
+      - cms/adp/send-code/
+    maximum_ok: false
+
+  - name: UserAuthorizationView
+    path_prefixes:
+      - cms/adp/authorization/
+    maximum_ok: true
+
+  - name: UserRegistrationValidationView
+    path_prefixes:
+      - cms/adp/validate-registration/
+    maximum_ok: false
+
+  - name: UserRegistrationView
+    path_prefixes:
+      - cms/adp/registration/
+    maximum_ok: false
+
+  - name: VerifyConfirmationCodeView
+    path_prefixes:
+      - cms/adp/verify-code/
+    maximum_ok: false
+
+  - name: RegistrationSettingsView
+    path_prefixes:
+      - cms/adp/registration-settings/
+    maximum_ok: false
+
+  - name: ValidateInvitationView
+    path_prefixes:
+      - cms/adp/invitations/validate/
+    maximum_ok: false
+
+  - name: ProfileSettingsView
+    path_prefixes:
+      - cms/adp/profile-settings/
+    maximum_ok: false
+
+  - name: MaintenanceStatusView
+    path_prefixes:
+      - system/maintenance-status/
+    maximum_ok: true
+
+  - name: ReadyView
+    path_prefixes:
+      - system/ready/
+    maximum_ok: true
+
+  - name: ThemeViewSet
+    actions:
+      - get_active_theme
+    path_prefixes:
+      - settings/themes/active/
+    note: AllowAny только для action get_active_theme
+    maximum_ok: false
+
+  - name: JupyterAccessView
+    path_prefixes:
+      - internal/jupyter-access/
+    note: BaseAPIViewPublicMixin — nginx auth_request; вход в resolve_jupyter_gate_user
+    maximum_ok: false
+
+  - name: SpectacularJSONView
+    path_prefixes:
+      - swagger.json
+    maximum_ok: false
+
+  - name: SpectacularYAMLView
+    path_prefixes:
+      - swagger.yaml
+    maximum_ok: false
+
+  - name: SpectacularSwaggerUiView
+    path_prefixes:
+      - swagger/
+    maximum_ok: false
+
+  - name: SpectacularRedocUiView
+    path_prefixes:
+      - redoc/
+    maximum_ok: false
+
+  - name: DeviceBoundTokenRefreshView
+    path_prefixes:
+      - cms/adp/token-refresh/
+    note: TokenRefreshView — cookie refresh без Bearer; нужен до входа
+    maximum_ok: true

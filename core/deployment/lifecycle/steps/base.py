@@ -26,6 +26,11 @@ class DeploymentStep(ABC):
     def name(self) -> str:
         """Краткое имя шага для логов."""
 
+    @property
+    def run_as_cleanup(self) -> bool:
+        """True — выполнить в finally после основных шагов (и при ошибке)."""
+        return False
+
     def should_run(self, ctx: DeploymentContext) -> bool:
         return True
 

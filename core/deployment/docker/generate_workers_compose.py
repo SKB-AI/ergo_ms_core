@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,8 +45,7 @@ PYTHON_SERVICE_TEMPLATE = """
     depends_on:
       redis:
         condition: service_started
-      api:
-        condition: service_started
+{depends_on_api}
     networks:
       - ergo_net
     command: ["python", "core/api/scripts/start_celery_worker.py", "--worker={worker_key}"]
@@ -62,7 +62,12 @@ def load_workers_config() -> dict[str, Any]:
     return data.get('workers') or {}
 
 
-def generate(workers: dict[str, Any]) -> str:
+_API_DEPENDS = """      api:
+        condition: service_started
+"""
+
+
+def generate(workers: dict[str, Any], *, depends_on_api: bool = True) -> str:
     header = """# Автогенерация: ergoms docker-gen-workers (не редактировать вручную)
 services:
 """
@@ -70,6 +75,7 @@ services:
         body = "  {}\n"
         return header + body
 
+    api_block = _API_DEPENDS if depends_on_api else ''
     blocks = []
     for name in workers:
         safe = ''.join(ch if ch.isalnum() or ch in '-_' else '-' for ch in name)
@@ -78,6 +84,7 @@ services:
                 name=safe,
                 worker_key=name,
                 volumes=PYTHON_VOLUMES_YAML,
+                depends_on_api=api_block,
             )
         )
     return header + '\n'.join(blocks)
@@ -93,8 +100,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    workers = load_workers_config()
-    content = generate(workers)
+    from env_resolvers import load_merged_env
+    from lifecycle.host_profile import SERVICE_API, SERVICE_YAML_WORKERS, resolve_host_profile
+
+    environ = {**os.environ, **{k: str(v) for k, v in load_merged_env(PROJECT_ROOT).items()}}
+    profile = resolve_host_profile(environ)
+    workers = load_workers_config() if profile.wants(SERVICE_YAML_WORKERS) else {}
+    content = generate(workers, depends_on_api=profile.wants(SERVICE_API))
     args.output.write_text(content, encoding='utf-8')
     if not args.quiet:
         if hasattr(sys.stdout, 'reconfigure'):

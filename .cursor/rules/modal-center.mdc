@@ -33,7 +33,7 @@ alwaysApply: false
 </ModalCenter>
 ```
 
-Полезные props: `size` (sm/md/lg/xl/fullscreen), `close-on-esc`, `close-on-backdrop`, `show-close-button`, `dialog-style`.
+Полезные props: `size` (sm/md/lg/xl/fullscreen), `close-on-esc`, `close-on-backdrop`, `show-close-button`, `dialog-style`, `backdrop-effect` (`dim` | `blur` | `both`), `backdrop-blur`.
 
 `ModalCenter` (standalone) автоматически управляет z-index через `@/js/utils/modalStack.js`: каждая открытая модалка получает уровень выше предыдущей. Подтверждения (`confirm.js`) и вложенные модалки работают без ручного `zIndex`.
 

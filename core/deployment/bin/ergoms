@@ -1,8 +1,27 @@
 #!/usr/bin/env bash
 # Локальная обёртка ergoms (core/deployment/bin): только из каталога проекта и подпапок.
+# /usr/local/bin/ergoms может быть симлинком — корень считаем по реальному файлу.
 set -euo pipefail
 
-BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ergoms_resolve_self() {
+  local src="${BASH_SOURCE[0]}"
+  if command -v readlink >/dev/null 2>&1 && readlink -f "$src" >/dev/null 2>&1; then
+    readlink -f "$src"
+    return
+  fi
+  if [[ -L "$src" ]]; then
+    local dest
+    dest="$(readlink "$src")"
+    if [[ "$dest" != /* ]]; then
+      dest="$(cd "$(dirname "$src")" && pwd)/$dest"
+    fi
+    printf '%s\n' "$dest"
+    return
+  fi
+  printf '%s\n' "$src"
+}
+
+BIN_DIR="$(cd "$(dirname "$(_ergoms_resolve_self)")" && pwd)"
 ROOT_P="$(cd "$BIN_DIR/../../.." && pwd)"
 CWD="$(pwd -P)"
 

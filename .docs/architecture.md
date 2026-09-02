@@ -33,7 +33,7 @@ Celery подключает конфиги из `modules/<имя>/api/celery_con
 
 Внутри `core/api/` за это отвечают два каталога: `commands/` — команды управления зависимостями модулей (`install`, `module-add`, `module-remove`, `module-list`), `scripts/` — точки входа процессов (запуск API, Celery, Jupyter, прогрев кэшей), которые `commands.conf` вызывает напрямую.
 
-Python-окружение одно на весь проект: `virtual_env/python/`. Зависимости сервера (Django, DRF и др.) — из корневого `pyproject.toml`, команда `ergoms python-install`. Переменные окружения задаются в корневом `.env`, модули при необходимости переопределяют их своими `.env` в корне модуля.
+Python-окружение одно на весь проект: `virtual_env/python/`. Зависимости сервера (Django, DRF и др.) — из корневого `pyproject.toml`, команда `ergoms python-install`. Режимы (`ERGO_*`) задаются в корневом `.env`, детали инфраструктуры — во фрагментах [`env/`](../env/); модули при необходимости переопределяют их своими `.env` в корне модуля. Шаблоны — [configuration.md](configuration.md).
 
 ## Файлы, база данных, фоновые задачи
 
@@ -67,13 +67,13 @@ Portable Redis: `ergoms install-redis`, затем `REDIS_ENABLED=true` в `.env
 
 ## Realtime (WebSocket, SSE и polling)
 
-Уведомления in_app, presence, мессенджер и часть админ-лент обновляются в реальном времени. Режим задаётся переменной `REALTIME_TRANSPORT` в `.env`:
+Уведомления in_app, presence, мессенджер и часть админ-лент обновляются в реальном времени. Режим задаётся переменной `ERGO_REALTIME` в корневом `.env` (legacy-override: `REALTIME_TRANSPORT`):
 
 - **`websocket`** (по умолчанию) — Django Channels; JWT передаётся в первом JSON-сообщении после подключения, не в URL.
 - **`sse`** — push через Server-Sent Events (`GET /api/realtime/stream/`).
 - **`http_polling`** — периодические REST-запросы (`GET /api/realtime/sync/` и точечные эндпоинты каналов).
 
-Интервалы polling — `REALTIME_POLL_*` в `.env`. Технические правила — [`.cursor/rules/realtime.mdc`](../.cursor/rules/realtime.mdc).
+Интервалы polling — `REALTIME_POLL_*` в [`env/realtime.env.example`](../env/realtime.env.example). Технические правила — [`.cursor/rules/realtime.mdc`](../.cursor/rules/realtime.mdc).
 
 ## Геолокация IP (GeoIP)
 
@@ -91,6 +91,7 @@ Portable Redis: `ergoms install-redis`, затем `REDIS_ENABLED=true` в `.env
 
 | Вопрос | Документ |
 |--------|----------|
+| Вынос модуля в отдельный сервис (уровни, ADR, пилот) | [modularization.md](modularization.md) |
 | Каталог возможностей модуля (hook’и, мост, службы, packages) | [modules.md](modules.md) |
 | Структура каталогов и конфигурации | [structure.md](structure.md) |
 | Справочник команд ergoms | [cli.md](cli.md) |

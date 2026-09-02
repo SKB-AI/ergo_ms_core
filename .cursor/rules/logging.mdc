@@ -27,15 +27,20 @@ alwaysApply: false
 | `celery_beat.log` | `celery.beat`, **`celery.beat.module.*`** |
 | `celery_tasks.log` | `celery.task`, **`celery.module.*`** |
 | `celery_broker.log` | `kombu` |
-| `nginx-access.log`, `nginx-error.log` | nginx |
+| `nginx-access.log`, `nginx-error.log` | nginx (хвост: `ergoms logs ergo_ms_nginx`; пустые файлы — служба не запущена или ещё не было запросов) |
 | `redis.log` | redis |
+| `postgresql.log` | portable PostgreSQL (`ERGO_DB=portable_postgres`; хвост: `ergoms logs ergo_ms_postgres` / `ergoms start-db-dev`) |
 | `client-dev.log` | Vite (служба) |
 | `client-browser.log` | `client.browser` (ошибки из браузера) |
 | `client-check/<timestamp>/` | артефакты `ergoms client-check` (01-lint…04-a11y, summary, full); не RotatingFileHandler |
 | `audit.log` | `core.audit` — журнал действий (дублирование записей из БД) |
+| `ollama-serve.log` | локальный LLM serve (фоновый процесс и служба) |
+| `jupyter.log` | JupyterLab (`ergoms start-jupyter`) |
+| `setup-full.log` | вывод `ergoms setup` / `setup-full` (tee в обёртке CLI) |
+| `ergoms.log` | остальные конечные команды `ergoms` (не `logs`/`help` и не долгий start/dev) |
 | `<service>.stderr.log` | crash/traceback служб (не дублирует app-логи) |
 
-**Ротация:** Python (`api.log`, Celery, …) — `RotatingFileHandler` (`ERGO_LOG_MAX_BYTES`). nginx / Redis / `client-dev.log` — `ergoms rotate-logs` (`ERGO_LOG_INFRA_*`); ежедневно — `ergoms install-infra-log-rotate`.
+**Ротация:** Python (`api.log`, Celery, …) — `RotatingFileHandler` (`ERGO_LOG_MAX_BYTES`). nginx / Redis / `client-dev.log` / `ollama-serve.log` / `jupyter.log` / `meilisearch.log` / `postgresql.log` / `setup-full.log` / `ergoms.log` — `ergoms rotate-logs` (`ERGO_LOG_INFRA_*`); ежедневно — `ergoms install-infra-log-rotate`. Сессия CLI перед записью тоже крутит файл по `ERGO_LOG_MAX_BYTES`.
 
 PID и temp nginx/redis — в `virtual_env/packages/*/run|temp`, **не** в `logs/`.
 
@@ -57,7 +62,11 @@ PID и temp nginx/redis — в `virtual_env/packages/*/run|temp`, **не** в `l
 
 Имя модуля Celery видно в **`logger.name`** — отдельные файлы по модулям не нужны.
 
-HTTP access (API и Media API): одна строка `"METHOD path proto" status` через middleware (`django.server`). Встроенный access daphne/runserver отключён. Уровни по умолчанию — из `ERGO_LOG_*` / `<SERVICE>_LOG_*`, **не** из `*_DEPLOY_TYPE`.
+HTTP access (API и Media API): одна строка `"METHOD path proto" status … request_id=` через middleware (`django.server`). Сквозной идентификатор — заголовок `X-Request-ID` (прокси → API → HTTP-мост → Celery `ergo_request_id`). Если клиент не прислал — сервер генерирует UUID. Встроенный access daphne/runserver отключён. Логгер `httpx` — **WARNING** (иначе каждый исходящий запрос на INFO). Уровни по умолчанию — из `ERGO_LOG_*` / `<SERVICE>_LOG_*`, **не** из `*_DEPLOY_TYPE`.
+
+Встроенный вывод Celery worker и daphne `--log-fmt` используют тот же префикс (`LEVEL`, дата, `name`, `module`); у worker дополнительно есть `processName` и `[task_name(task_id)]`.
+
+Дерево `modules.*` в процессе API пишется в `api.log`, в worker — в `celery_tasks.log`. Задачи ядра — `celery.core.*` (кроме `celery.core.audit` / `celery.core.client_monitor`). HTTP-слой модуля не называй `celery.module.*`.
 
 ---
 
@@ -71,6 +80,8 @@ HTTP access (API и Media API): одна строка `"METHOD path proto" statu
 ```python
 logger = logging.getLogger(f'celery.module.{module_name}.tasks')
 beat_logger = logging.getLogger(f'celery.beat.module.{module_name}')
+# HTTP и общий код модуля — не celery.module
+logger = logging.getLogger(f'modules.{module_name}.views')
 ```
 
 - Уровни и файлы — через `.env`, не хардкод в коде.
@@ -133,7 +144,7 @@ ergoms logs ergo_ms_celery_worker
 |-----|-----|
 | Ошибки в DevTools | `logError`, `logWarn` — [`log-error.mdc`](log-error.mdc) |
 | Уровень консоли браузера | `CLIENT_LOG_LEVEL` (не влияет на сервер) |
-| Ошибки на сервер | автоматически из `logError` → `POST /api/cms/client-log/` → `client-browser.log` |
+| Ошибки на сервер | автоматически из `logError` → `POST /api/cms/client-log/` → `client-browser.log` (нужен JWT; гость — тишина) |
 | Включение записи на сервер | `CLIENT_BROWSER_LOG_ENABLED=true` |
 
 **Запрещено:** `console.error(error)` с axios-объектом, дублировать санитизацию в модулях.
@@ -149,7 +160,7 @@ ergoms logs ergo_ms_celery_worker
 | Каталог | `ERGO_LOGS_DIR` |
 | Общие уровни | `ERGO_LOG_FILE_LEVEL`, `ERGO_LOG_CONSOLE`, `ERGO_LOG_CONSOLE_LEVEL` |
 | Ротация | `ERGO_LOG_MAX_BYTES`, `ERGO_LOG_BACKUP_COUNT`, `ERGO_LOG_BROKER_*` |
-| Имена файлов | `ERGO_LOG_FILE_<KEY>` (`API`, `CELERY_WORKER`, `NGINX_ERROR`, `REDIS`, …) |
+| Имена файлов | `ERGO_LOG_FILE_<KEY>` (`API`, `CELERY_WORKER`, `NGINX_ERROR`, `REDIS`, `OLLAMA`, `JUPYTER`, `SETUP_FULL`, `ERGOMS`, …) |
 | Уровни файлов | `ERGO_LOG_LEVEL_<KEY>` (`AUDIT`, `CELERY_BROKER`, `CLIENT_BROWSER`, …) |
 | API | `API_LOG_FILE_LEVEL`, `API_LOG_CONSOLE`, `API_LOG_CONSOLE_LEVEL` |
 | Celery worker | `CELERY_LOG_*` (процессы worker) |
@@ -180,9 +191,15 @@ ergoms logs ergo_ms_nginx
 ergoms logs ergo_ms_redis
 ergoms logs celery-tasks [module] [lines]
 ergoms logs celery-beat [module] [lines]
+ergoms logs ergo-ollama
+ergoms logs ergo_ms_jupyter
+ergoms logs setup-full
+ergoms logs ergoms
 ```
 
 `ergoms logs` читает **файлы** в `logs/`, не journald/NSSM `ergo-*.log`.
+
+Сессия CLI (`setup-full.log` / `ergoms.log`) пишется обёрткой `ergoms` через `tee` / `Start-Transcript`, не через Django `FileHandler`. Вложенный `ergoms` во время `setup-full` не открывает второй файл (`ERGO_CLI_LOG_ATTACHED`). Долгие `dev` / `start-*` не дублируются сюда: у них свои журналы.
 
 ---
 
@@ -206,6 +223,7 @@ ergoms logs celery-beat [module] [lines]
 | Метки консоли ergoms `[OK]`/`[ERROR]`/… | [`console-output.mdc`](console-output.mdc) |
 | Celery, задачи, beat | [`celery.mdc`](celery.mdc) |
 | Redis, nginx | [`deployment-infra.mdc`](deployment-infra.mdc) |
+| Пустая консоль за nginx | [`nginx-spa-boot.mdc`](nginx-spa-boot.mdc) |
 | Безопасность логов | [`security.mdc`](security.mdc) |
 | Аудит (не путать с app.log) | [`audit.mdc`](audit.mdc) |
 | Команды ergoms | [`no-direct-manage-py.mdc`](no-direct-manage-py.mdc) |

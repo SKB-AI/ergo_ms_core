@@ -13,6 +13,7 @@ alwaysApply: true
 - Токены и контекст сессии — через `tokenStorage.js`, не в localStorage
 - В URL и ссылках — не числовые id из БД, а `public_id` (UUID)
 - API проверяет права сам; клиентские `permission-rules` — только UX
+- Эндпоинт по умолчанию требует JWT (`BaseAPIView` / `BaseModelViewSet`); публичный — только `BaseAPIViewPublicMixin` + allowlist
 - Файлы — через media_api, не `/media/` на основном API
 - Ошибки на клиенте — `logError`, не `console.error(axiosObject)`
 - Prod: `DEBUG=False`, secure cookies, без sourcemap
@@ -20,7 +21,8 @@ alwaysApply: true
 ## Запрещено (неснимаемое)
 
 - Коммитить `.env`, ключи, пароли; хардкодить секреты в коде и чате
-- `AllowAny` / отключение `permission_classes` без явной бизнес-причины
+- Фиксировать в git железо хоста (RAM, CPU, GPU, «на этом сервере…») — [`no-host-fingerprint.mdc`](no-host-fingerprint.mdc)
+- `AllowAny` / `BaseAPIViewPublicMixin` / пустые `permission_classes` без явной причины и строки в allowlist
 - pk БД в URL, query, localStorage / sessionStorage / JS-cookie
 - JWT в query WebSocket; токены вне `tokenStorage.js`
 - Прямая раздача `/media/` с основного API
@@ -40,8 +42,10 @@ alwaysApply: true
 | Тема | Правило |
 |------|---------|
 | Детали, примеры BAD/GOOD | [`security-details.mdc`](security-details.mdc) |
+| Без отпечатка хоста | [`no-host-fingerprint.mdc`](no-host-fingerprint.mdc) |
 | Логи клиента | [`log-error.mdc`](log-error.mdc) |
 | Логи API | [`logging.mdc`](logging.mdc) |
 | media_api | [`media_api.mdc`](media_api.mdc) |
 | Глобальный админ | [`global-admin.mdc`](global-admin.mdc) |
 | Права маршрутов (UX) | [`permission_rules.mdc`](permission_rules.mdc) |
+| Живые проверки стека | [`system-test.mdc`](system-test.mdc) |

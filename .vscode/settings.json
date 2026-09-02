@@ -55,6 +55,7 @@
         "**/node_modules": true,
         "**/virtual_env": true
     },
+    "npm.autoDetect": "off",
 
     "explorer.fileNesting.enabled": true,
     "explorer.fileNesting.patterns": {
@@ -75,5 +76,29 @@
     "python.terminal.activateEnvironment": true,
     "git.detectSubmodules": true,
     "git.autoRepositoryDetection": true,
-    "git.detectSubmodulesLimit": 100
+    "git.detectSubmodulesLimit": 100,
+
+    // SSH-окно не должно пробрасывать порты сервера на localhost (конфликт с локальным Start All).
+    "remote.autoForwardPorts": false,
+    "remote.autoForwardPortsSource": "process",
+    "remote.restoreForwardedPorts": false,
+    "remote.otherPortsAttributes": {
+        "onAutoForward": "ignore"
+    },
+    // Cursor не открывает встроенный браузер на localhost-ссылки и обнаруженные порты.
+    // Саму вкладку Browser Tab выключают install-extensions и ERGO MS User Config (state.vscdb).
+    "workbench.browser.openLocalhostLinks": false,
+    "workbench.externalBrowser": "default",
+    "remote.portsAttributes": {
+        "*": { "onAutoForward": "ignore" },
+        "80": { "onAutoForward": "ignore" },
+        "6379": { "onAutoForward": "ignore" },
+        "8000": { "onAutoForward": "ignore" },
+        "8003": { "onAutoForward": "ignore" },
+        "8004": { "onAutoForward": "ignore" },
+        "11434": {
+            "label": "Ollama",
+            "onAutoForward": "ignore"
+        }
+    }
 }

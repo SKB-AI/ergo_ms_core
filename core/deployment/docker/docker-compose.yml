@@ -14,7 +14,10 @@ x-python-volumes: &python_volumes
 services:
   redis:
     image: ${DOCKER_REDIS_IMAGE:-redis:7-alpine}
-    # Публикация на хост — docker-compose.publish.generated.yml (если порт свободен).
+    # Публикация на хост — docker-compose.publish.generated.yml
+    # (только при явном DOCKER_REDIS_PUBLISH_PORT).
+    # AUTH — docker-compose.redis-auth.generated.yml при непустом
+    # databases.yaml redis.password.
     networks:
       - ergo_net
     restart: unless-stopped
@@ -25,12 +28,14 @@ services:
       retries: 10
 
   api:
+    profiles: ["host-api"]
     image: ${DOCKER_PYTHON_IMAGE:-ergo_ms-python:local}
     build:
       context: ../../..
       dockerfile: core/deployment/docker/Dockerfile.python
       args:
         ERGO_DOCKER_DEPS_CACHE: ${DOCKER_DEPS_CACHE:-internal}
+        PYTHON_BASE: ${DOCKER_PYTHON_BASE:-python:3.12-slim-bookworm}
     env_file:
       - .compose.env
     environment:
@@ -38,6 +43,9 @@ services:
       ERGO_DOCKER_REQUIRES_SETUP: "0"
       ERGO_PROCESS_ROLE: api
     volumes: *python_volumes
+    # Публичный API. Служебный /internal/bridge nginx режет (deny all);
+    # сам процесс принимает мост только с loopback (монолит)
+    # или private/link-local (microservice|split).
     ports:
       - "${API_PORT:-8000}:${API_PORT:-8000}"
     depends_on:
@@ -49,6 +57,7 @@ services:
     restart: unless-stopped
 
   media-api:
+    profiles: ["host-media"]
     image: ${DOCKER_PYTHON_IMAGE:-ergo_ms-python:local}
     env_file:
       - .compose.env
@@ -69,6 +78,7 @@ services:
     restart: unless-stopped
 
   celery-beat:
+    profiles: ["host-beat"]
     image: ${DOCKER_PYTHON_IMAGE:-ergo_ms-python:local}
     env_file:
       - .compose.env

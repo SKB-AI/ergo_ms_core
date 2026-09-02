@@ -2,7 +2,7 @@
   "name": "ergo-ms-user-config",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "publisher": "ergo-ms",
   "icon": "icon.png",
   "engines": {

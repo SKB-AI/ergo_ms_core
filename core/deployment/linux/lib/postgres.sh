@@ -18,7 +18,7 @@ _postgres_init_service_config() {
   if [[ -n "${name:-}" ]]; then
     POSTGRES_SERVICE_NAME="$name"
   else
-    POSTGRES_SERVICE_NAME="$POSTGRES_SERVICE_NAME_DEFAULT"
+    POSTGRES_SERVICE_NAME="$(ergo_service_name postgres "$root")"
   fi
   display="$(_ergo_env_value "$root" 'POSTGRES_SERVICE_DISPLAY_NAME' 2>/dev/null || true)"
   if [[ -n "${display:-}" ]]; then
@@ -201,12 +201,50 @@ _postgres_force_install() {
   _postgres_run_script "$root" --check-force-only
 }
 
+_postgres_resolve_service_user() {
+  local root="$1"
+  local configured owner current data
+  configured="$(_ergo_env_value "$root" 'POSTGRES_SERVICE_USER' 2>/dev/null || true)"
+  if [[ -n "${configured:-}" && "$configured" != "root" ]]; then
+    echo "$configured"
+    return 0
+  fi
+  data="$(_postgres_data "$root")"
+  if [[ -d "$data" ]]; then
+    owner="$(stat -c '%U' "$data" 2>/dev/null || true)"
+    if [[ -n "$owner" && "$owner" != "root" ]]; then
+      echo "$owner"
+      return 0
+    fi
+  fi
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    echo "$SUDO_USER"
+    return 0
+  fi
+  current="$(id -un 2>/dev/null || true)"
+  if [[ -n "$current" && "$current" != "root" ]]; then
+    echo "$current"
+    return 0
+  fi
+  owner="$(stat -c '%U' "$root" 2>/dev/null || true)"
+  if [[ -n "$owner" && "$owner" != "root" ]]; then
+    echo "$owner"
+    return 0
+  fi
+  return 1
+}
+
 _postgres_unit_content() {
   local root="$1"
-  local postgres data
+  local postgres data user group
   _postgres_init_service_config "$root"
   postgres="$(_postgres_bin "$root" postgres)"
   data="$(_postgres_data "$root")"
+  if ! user="$(_postgres_resolve_service_user "$root")"; then
+    write_ergoms_message pg_error_need_unprivileged_user red --stderr
+    return 1
+  fi
+  group="$(id -gn "$user" 2>/dev/null || echo "$user")"
   cat <<UNIT
 [Unit]
 Description=${POSTGRES_SERVICE_DISPLAY_NAME}
@@ -215,7 +253,8 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=-__ERGO_MS_ENV__
-User=root
+User=$user
+Group=$group
 ExecStart=$postgres -D $data
 ExecStop=$(_postgres_bin "$root" pg_ctl) stop -D $data -m fast
 Restart=on-failure
@@ -301,8 +340,10 @@ postgres_install_service() {
 
   postgres_stop "$root" quiet 2>/dev/null || true
 
-  local content
-  content="$(_postgres_unit_content "$root")"
+  local content user
+  content="$(_postgres_unit_content "$root")" || return 1
+  user="$(_postgres_resolve_service_user "$root")"
+  write_ergoms_message pg_info_service_user cyan "" "user=$user"
   install_unit "$POSTGRES_SERVICE_NAME" "$content" "$root"
   enable_and_start "$POSTGRES_SERVICE_NAME.service"
   write_ergoms_message ok_systemd_service_installed_running green "" "name=PostgreSQL"
@@ -331,13 +372,23 @@ postgres_start() {
     return 0
   fi
 
-  local pg_ctl data log_file
+  local pg_ctl data log_file owner
   pg_ctl="$(_postgres_bin "$root" pg_ctl)"
   data="$(_postgres_data "$root")"
   log_file="$(_postgres_dir "$root")/logs/pg_ctl.log"
   mkdir -p "$(_postgres_dir "$root")/logs"
   write_ergoms_message arrow_starting cyan "" "name=PostgreSQL"
-  if ! "$pg_ctl" start -D "$data" -l "$log_file" -w -t 60; then
+  # pg_ctl нельзя от root; при sudo стартуем от владельца data.
+  if [[ $(id -u) -eq 0 ]]; then
+    if ! owner="$(_postgres_resolve_service_user "$root")"; then
+      write_ergoms_message pg_error_need_unprivileged_user red --stderr
+      return 1
+    fi
+    if ! runuser -u "$owner" -- "$pg_ctl" start -D "$data" -l "$log_file" -w -t 60; then
+      write_ergoms_message error_start_failed_check_logs red --stderr "name=PostgreSQL" "path=$log_file"
+      return 1
+    fi
+  elif ! "$pg_ctl" start -D "$data" -l "$log_file" -w -t 60; then
     write_ergoms_message error_start_failed_check_logs red --stderr "name=PostgreSQL" "path=$log_file"
     return 1
   fi

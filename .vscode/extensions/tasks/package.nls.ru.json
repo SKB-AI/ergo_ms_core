@@ -26,6 +26,7 @@
   "task.multiTerminal.group": "Группа терминалов для управления",
   "task.multiTerminal.delay": "Задержка между запусками (мс)",
   "task.multiTerminal.hideControlTerminal": "Скрыть управляющий терминал после запуска дочерних терминалов",
+  "task.multiTerminal.launchAs": "Запускать дочерние процессы как задачи VS Code (task) или обычные терминалы без Running Tasks и toast (terminal)",
   "task.ergoModule.label": "Имя задачи в Run Task",
   "task.ergoModule.detail": "Краткое описание задачи",
   "task.ergoModule.command": "Команда ergoms …",

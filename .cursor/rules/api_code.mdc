@@ -1,5 +1,8 @@
 ---
-description: API ядра — SwaggerSafeMixin, поиск пользователей, пути проекта, ergoms
+description: API ядра — BaseAPIView, BaseModelViewSet, Swagger, public_id, поиск пользователей
+globs:
+  - "core/api/**/*.py"
+  - "modules/*/api/**/*.py"
 alwaysApply: false
 ---
 
@@ -7,32 +10,71 @@ alwaysApply: false
 
 ## Кратко
 
-- ViewSet с данными пользователя — `SwaggerSafeMixin` + фильтр в `get_queryset`.
+- Новый эндпоинт — **базовый класс ядра**, не сырой DRF и не ручная сборка миксинов.
+- ViewSet с данными пользователя — `BaseModelViewSet` (или `restrict_queryset` / фильтр в `get_queryset`).
 - Поиск людей — только `user_search` ([`user_search.mdc`](user_search.mdc)).
 - Пути к ресурсам — из `core/api/src/config/settings/base.py`.
 - Команды в ответах пользователю — только `ergoms` ([`no-direct-manage-py.mdc`](no-direct-manage-py.mdc)).
 
+## Какой базовый класс
+
+Импорт: `from src.core.utils.base import …` (или `…base_views` / `…base_viewsets`).
+
+| Задача | Класс |
+|--------|--------|
+| Один метод (`get`/`post`) | `BaseAPIView` |
+| Только глобальный админ | `BaseAPIViewGlobalAdminMixin` / `BaseModelViewSetGlobalAdmin` |
+| Публичный (login, health ядра) | `BaseAPIViewPublicMixin` + строка в `core_anonymous_allowlist.yaml` |
+| CRUD модели | `BaseModelViewSet` |
+| Только чтение | `BaseReadOnlyModelViewSet` |
+| Набор `@action` без модели | `BaseViewSet` |
+| GenericViewSet без `public_id` | `AuthenticatedAPIMixin` + свой lookup |
+
+`BaseModelViewSet` уже даёт: `IsAuthenticated`, throttle, `SwaggerSafeMixin`, пустой queryset для Swagger/гостей, lookup по `public_id`. Права модуля — в `permission_classes`. Аудит CRUD — `AuditedModelMixin` перед базой. Файлы — `MediaApiFileMixin`. Поле модели — `PublicIdMixin`.
+
+Гостевой доступ на ViewSet **не** делай «молча»: как у APIView, только явный публичный миксин и allowlist.
+
 ## ViewSet и Swagger
 
 ```python
-# GOOD — mixin + фильтр по пользователю
-from src.core.utils.mixins import SwaggerSafeMixin
+# GOOD — базовый класс; super() уже закрыл гостей и Swagger
+from src.core.utils.base import BaseModelViewSet, PublicIdMixin
+from src.core.audit.mixin import AuditedModelMixin
 
-class MyViewSet(SwaggerSafeMixin, viewsets.ModelViewSet):
+class Item(PublicIdMixin, models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    ...
+    # В изолированном модуле (`api/schema.yaml` isolated: true) FK на AUTH_USER_MODEL
+    # запрещён — владелец: user_public_id. См. modularization.mdc
+
+class ItemViewSet(AuditedModelMixin, BaseModelViewSet):
+    queryset = Item.objects.all()
+    serializer_class = ItemSerializer
+    permission_classes = [IsAuthenticated, CanViewMyModule]
+    owner_field = 'owner'  # опционально: qs.filter(owner=user)
+
     def get_queryset(self):
-        qs = super().get_queryset()
-        if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
-            return qs.none()
-        return qs.filter(owner=self.request.user)
+        return super().get_queryset().order_by('name')
 ```
 
 ```python
-# BAD — полный queryset без фильтра (утечка чужих данных)
+# BAD — сырой ModelViewSet, полный queryset, pk в URL
 class MyViewSet(viewsets.ModelViewSet):
     queryset = MyModel.objects.all()
 ```
 
-Mixin: `core/api/src/core/utils/mixins.py`. Подробнее — [`code.mdc`](code.mdc) → «Сериализаторы и Swagger».
+```python
+# BAD — собирать миксины вручную на новом коде
+class MyViewSet(SwaggerSafeMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'public_id'
+```
+
+Без `owner_field` **обязан** отфильтровать выборку в `get_queryset` (владелец, scope, права). `super()` только отсекает гостей и Swagger.
+
+Эталон: `modules/module_template/api/views.py`. Миксины: `core/api/src/core/utils/mixins.py`. Подробнее — [`code.mdc`](code.mdc) → «Сериализаторы и Swagger».
+
+В `SerializerMethodField` user — через `SwaggerSafeSerializerMixin.get_safe_user()`, не `request.user` без проверки на None.
 
 ## Поиск пользователей
 
@@ -45,3 +87,5 @@ Mixin: `core/api/src/core/utils/mixins.py`. Подробнее — [`code.mdc`](
 | Безопасность, public_id | [`security.mdc`](security.mdc) |
 | База данных, ORM | [`database.mdc`](database.mdc) |
 | Django, расширение User | [`django.mdc`](django.mdc) |
+| Аудит CRUD | [`audit.mdc`](audit.mdc) |
+| Изолированный модуль, FK | [`modularization.mdc`](modularization.mdc) |

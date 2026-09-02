@@ -12,6 +12,8 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
+
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 _DEPLOYMENT_DIR = _SCRIPTS_DIR.parent
 if str(_DEPLOYMENT_DIR) not in sys.path:
@@ -20,6 +22,7 @@ if str(_DEPLOYMENT_DIR) not in sys.path:
 from cli_locale import t  # noqa: E402
 from console_tags import format_console  # noqa: E402
 
+from celery_balance.host_budget import collect_role_totals  # noqa: E402
 from ergo_process_classifier import (  # noqa: E402
     PROJECT_ROOT,
     ProcessSample,
@@ -46,6 +49,8 @@ def collect_samples(root: Path) -> list[ProcessSample]:
 
 def build_payload(samples: list[ProcessSample]) -> dict[str, object]:
     total_memory_mb = round(sum(item.memory_mb for item in samples), 1)
+    vm = psutil.virtual_memory()
+    roles = collect_role_totals(samples)
     return {
         'processes': [
             {
@@ -59,6 +64,20 @@ def build_payload(samples: list[ProcessSample]) -> dict[str, object]:
         ],
         'process_count': len(samples),
         'total_memory_mb': total_memory_mb,
+        'host': {
+            'ram_total_mb': round(vm.total / (1024 * 1024), 1),
+            'ram_used_mb': round(vm.used / (1024 * 1024), 1),
+            'ram_percent': round(float(vm.percent), 1),
+            'cpu_count': int(psutil.cpu_count(logical=True) or 1),
+        },
+        'roles': {
+            name: {
+                'memory_mb': item.memory_mb,
+                'cpu_percent': item.cpu_percent,
+                'count': item.count,
+            }
+            for name, item in sorted(roles.items())
+        },
     }
 
 

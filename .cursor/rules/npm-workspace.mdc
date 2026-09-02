@@ -5,6 +5,7 @@ globs:
   - "virtual_env/npm/**"
   - core/client/package.json
   - core/client/vite.config.js
+  - "modules/*/client/package.json"
   - "core/deployment/**/*npm*"
   - "core/deployment/scripts/start_client_if_*.py"
   - core/deployment/project_layout.py
@@ -23,14 +24,15 @@ alwaysApply: false
 |-----|-----|
 | Манифест workspace, lock, `.npmrc` | `virtual_env/npm/` |
 | Установленные пакеты | `virtual_env/npm/node_modules/` |
-| Workspaces | `../../core/client`, `../../modules/*/client` |
+| Workspaces | только `../../core/client` (модули — не workspace, их пакеты ставит sync-скрипт) |
 | Команды клиента | `ergoms npm …` (cwd = `virtual_env/npm`) |
 | Тонкий корневой `package.json` | только скрипты VS Code расширений |
 
 ## Обязательно
 
 - Ставить и обновлять зависимости через **`ergoms npm run install:all`** (или `ergoms npm …`), не через «голый» `npm` в корне репозитория как cwd workspace.
-- Новые клиентские deps ядра — в [`virtual_env/npm/package.json`](../../virtual_env/npm/package.json); после изменений ядра — `ergoms npm-lock-refresh`, проверка — `ergoms lock-check`.
+- Новые клиентские deps **ядра** (оболочка, CMS, сборка) — в [`virtual_env/npm/package.json`](../../virtual_env/npm/package.json); после изменений ядра — `ergoms npm-lock-refresh`, проверка — `ergoms lock-check`.
+- Доменные клиентские пакеты **модуля** (графики, редакторы, карты, предпросмотр файлов) — в `modules/<имя>/client/package.json`. Их ставит [`sync-module-npm-deps.js`](../../core/deployment/scripts/sync-module-npm-deps.js) в тот же `node_modules` **без** записи в lock. После правок модуля — `ergoms npm run install:all`, не `npm-lock-refresh`.
 - Запуск скриптов клиента из npm-root через workspace: `npm run build -w @ergo-ms/core-client` (как в `package.json` npm-root и compose).
 - Vite: пакеты резолвятся из `virtual_env/npm/node_modules` (плагин + `resolve.modules` / `server.fs.allow` в [`vite.config.js`](../../core/client/vite.config.js)) — каталог **не** предок `core/client`, walk-up Node их не найдёт.
 - Docker: том `node_modules` монтируется в **`/app/virtual_env/npm/node_modules`**; установка — [`ensure_npm_deps.sh`](../../core/deployment/docker/entrypoint/ensure_npm_deps.sh).
@@ -58,6 +60,7 @@ Docker volume → /app/virtual_env/npm/node_modules
 - **Не** возвращать клиентский `package.json` / lock / workspaces в корень репозитория.
 - **Не** предлагать symlink/junction корневого `node_modules` → `virtual_env/npm/...` как способ «убрать с корня».
 - **Не** ставить клиентские deps в тонкий корневой `package.json` (там только расширения VS Code).
+- **Не** класть в `virtual_env/npm/package.json` пакеты, которые импортирует только модуль (Apex/ECharts, CodeMirror, pdfjs, карты и т.п.) — только `modules/<имя>/client/package.json`. Календарь ядра (`DatePicker` / `@vuepic/vue-datepicker` / `date-fns`) — зависимость ядра, не модуля.
 - **Не** восстанавливать том `client_node_modules` и ручные `ln -sf` в `core/client/node_modules/.bin` без крайней необходимости — запуск через `-w` из npm-root.
 
 Допустимо: штатные ссылки **внутри** `virtual_env/npm/node_modules` на workspace-пакеты (`@ergo-ms/core-client` → `core/client`) — это обычное поведение npm workspaces, не «перенос корня через symlink».
@@ -82,8 +85,8 @@ Docker volume → /app/virtual_env/npm/node_modules
 
 ## Lock и модули
 
-- `package-lock.json` — только ядро; workspaces модулей в манифесте есть, в lock модули не должны попадать.
-- Доустановка модульных пакетов — [`sync-module-npm-deps.js`](../../core/deployment/scripts/sync-module-npm-deps.js) в `virtual_env/npm/node_modules`.
+- `package-lock.json` — только ядро. Workspace в манифесте — `../../core/client`; модули в lock попадать не должны.
+- Доустановка модульных пакетов — [`sync-module-npm-deps.js`](../../core/deployment/scripts/sync-module-npm-deps.js) в `virtual_env/npm/node_modules`. Лишнее снимает свой обход дерева ядра и модулей, не `npm prune`: иначе `--no-save` пакеты считались бы лишними. Повторный `setup-full` / `install:all` **не** смотрит на mtime `package.json`: skip — по отпечатку содержимого манифестов **и** по наличию прямых пакетов в `node_modules` (git checkout с тем же текстом не запускает установку заново; пропавший пакет модуля — запускает). Обход `node_modules` для очистки — только если сменился набор прямых пакетов, сменился lock ядра или передан `--update`. `npm install` ядра запускается, только если сменился `package-lock.json` или не хватает пакетов ядра; пакеты модулей передаются в тот же вызов (`--no-save`), чтобы npm не снимал их и не ставил вторым проходом. Если установка падает с ENOENT в `_cacache` (битый индекс после прерывания или `cache clean`), скрипт делает `cache verify`, при повторной ошибке — `cache clean --force`, и ставит пакеты ещё раз. Скрипт и цепочка `module-env.js` / `parse-disabled-modules.js` **не** требуют пакеты из `node_modules` при загрузке (`dotenv` и т.п.): на чистой машине `install:all` как раз их ставит.
 - Команды: `ergoms npm-lock-refresh`, `npm-lock-sanitize`, `lock-check`. Подробнее для людей — [`.docs/cli.md`](../../.docs/cli.md).
 
 ## Очистка и legacy

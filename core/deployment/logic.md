@@ -111,7 +111,7 @@
 
 ### Первичная настройка Redis
 
-1. В `.env`: `ERGO_BROKER=redis`, секция `redis` в `databases.yaml`, затем `ergoms install-redis` (или `setup-full` — шаг `EnsureRedisStep`)
+1. В `.env`: `ERGO_BROKER=redis`, затем `ergoms install-redis` или `setup-full` (шаг `EnsureRedisStep`). Секция `redis` в `databases.yaml` появится сама, если её ещё не было.
 2. Перезапустить API
 3. Проверка: `ergoms test-redis` → `PONG`
 
@@ -221,7 +221,7 @@ TLS: `ERGO_TLS_*`, `ERGO_SSL_CERT`, `ERGO_SSL_KEY` — `env/nginx.env`. CORS: `C
 
 | Симптом | Что проверить |
 |---------|----------------|
-| `ergoms` не найден | Работайте из корня проекта; `core/deployment/bin` в PATH (Project-Shell). `uninstall-cli` только сообщает, что файлы в bin не удаляются |
+| `ergoms` не найден | Работайте из корня проекта; `core/deployment/bin` в PATH (Project-Shell). На Linux `install-cli` ставит `/usr/local/bin/ergoms` для `sudo ergoms`. `uninstall-cli` снимает только эту ссылку, файлы в bin не удаляет |
 | Команда есть только на одной ОС | Префикс `win:` / `linux:` в `commands.conf` |
 | Окружение повреждено после ручного venv | Не создавай `.venv` — только `virtual_env/python/` ([`virtual-env.mdc`](../../.cursor/rules/virtual-env.mdc)) |
 | ParserError в `.ps1`, кракозябры вместо кириллицы | UTF-8 без BOM — `ergoms ps1-encoding-check --fix` |

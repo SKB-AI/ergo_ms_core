@@ -1,0 +1,61 @@
+# ERGO MS — изолированный стек для loadtest (profile: loadtest)
+# Пустая Postgres + API на LOADTEST_API_PORT (по умолчанию 18000).
+# Включение: DOCKER_PROFILE_LOADTEST=true → ergoms docker-up
+# или: ergoms docker-loadtest-up
+
+services:
+  postgres-loadtest:
+    image: ${DOCKER_POSTGRES_IMAGE:-postgres:16-alpine}
+    profiles: ["loadtest"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
+      POSTGRES_DB: ${LOADTEST_POSTGRES_DB:-ergo_ms_loadtest}
+    ports:
+      - "127.0.0.1:${LOADTEST_POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - postgres_loadtest_data:/var/lib/postgresql/data
+    networks:
+      - ergo_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api-loadtest:
+    image: ${DOCKER_PYTHON_IMAGE:-ergo_ms-python:local}
+    profiles: ["loadtest"]
+    env_file:
+      - .compose.env
+    environment:
+      ERGO_DOCKER_SERVICE_NAME: api-loadtest
+      ERGO_DOCKER_REQUIRES_SETUP: "0"
+      ERGO_PROCESS_ROLE: api
+      API_PORT: ${LOADTEST_API_PORT:-18000}
+      ERGO_DATABASES_YAML: /app/databases.yaml
+      ERGO_DOCKER_DB_HOST: postgres-loadtest
+      ERGO_DOCKER_DB_PORT: "5432"
+    volumes:
+      - ${ERGO_PROJECT_ROOT:-../../..}:/app
+      - ./.compose.databases.loadtest.yaml:/app/databases.yaml:ro
+      - ${ERGO_LOGS_BIND:-../../../logs}:/app/logs
+      - ${ERGO_MEDIA_BIND:-../../../media}:/app/media
+      - ${ERGO_CELERY_CACHE_BIND:-celery_cache}:/app/virtual_env/cache
+      - poetry_venv:/app/virtual_env/python
+    ports:
+      - "${LOADTEST_API_PORT:-18000}:${LOADTEST_API_PORT:-18000}"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres-loadtest:
+        condition: service_healthy
+    networks:
+      - ergo_net
+    command: ["python", "core/api/scripts/start_api.py"]
+    restart: unless-stopped
+
+volumes:
+  postgres_loadtest_data:
+    name: ${DOCKER_COMPOSE_PROJECT:-ergo_ms}_postgres_loadtest_data

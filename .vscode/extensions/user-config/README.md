@@ -3,6 +3,7 @@
 Расширение для VS Code/Cursor, которое автоматически применяет проектные настройки из файлов:
 - `.vscode/user_settings.json` -> настройки workspace
 - `.vscode/user_keybindings.json` -> глобальные keybindings
+- политика встроенного браузера Cursor (при установке и при открытии проекта)
 
 ## Возможности
 
@@ -96,7 +97,8 @@ powershell -ExecutionPolicy Bypass -File .vscode/extensions/user-config/uninstal
 1. При открытии проекта расширение активируется, если находит файлы `user_settings.json` или `user_keybindings.json`
 2. Настройки из `user_settings.json` применяются к workspace через VS Code API
 3. Keybindings из `user_keybindings.json` добавляются в глобальный `keybindings.json` пользователя (без дубликатов)
-4. При изменении файлов конфигурации расширение автоматически применяет изменения
+4. В Cursor дополнительно выключается автооткрытие вкладки Browser Tab. Это не обычный `settings.json`: Cursor хранит переключатель в своём внутреннем хранилище.
+5. При изменении файлов конфигурации расширение автоматически применяет изменения
 
 ## Маркировка keybindings
 

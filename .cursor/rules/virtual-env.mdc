@@ -47,4 +47,5 @@ alwaysApply: true
 | Команды ergoms | [`no-direct-manage-py.mdc`](no-direct-manage-py.mdc) |
 | Артефакты только в корне | [`project-root-artifacts.mdc`](project-root-artifacts.mdc) |
 | npm workspace (`virtual_env/npm`) | [`npm-workspace.mdc`](npm-workspace.mdc) |
+| Portable PostgreSQL | [`postgres-portable.mdc`](postgres-portable.mdc) |
 | Первичная настройка | [`.docs/cli.md`](../../.docs/cli.md) |

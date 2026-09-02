@@ -17,7 +17,7 @@ sections:
   - name: install
     summary: 'Alias for install-services: install and start all services'
   - name: install-services
-    summary: Install and start all OS services (modules from host_lifecycle.yaml; nginx/redis — when ERGO_PROXY/ERGO_BROKER is set in .env)
+    summary: Install and start OS services according to HOST_PROFILE (modules from host_lifecycle.yaml; nginx/redis — when ERGO_PROXY/ERGO_BROKER is set)
   - name: install-api-service
     summary: Install and start the API service only
   - name: install-client-service
@@ -28,6 +28,12 @@ sections:
     summary: Install and start Celery beat
   - name: install-media-service
     summary: Install and start Media API
+  - name: install-module-service
+    invoke: ergoms install-module-service --module=<name> --kind=api|worker|beat
+    summary: Install OS service for a module API, worker, or Beat
+  - name: uninstall-module-service
+    invoke: ergoms uninstall-module-service --module=<name> --kind=api|worker|beat
+    summary: Remove OS service for a module API, worker, or Beat
   - name: start
     summary: Start all services
   - name: stop
@@ -40,37 +46,42 @@ sections:
     invoke: ergoms uninstall-services [-Purge|--purge]
     summary: Remove OS services (modules from host_lifecycle.yaml; with --purge — delete data)
   - name: logs
-    invoke: ergoms logs <имя_службы> [строки]
-    summary: Service log
+    invoke: ergoms logs <service_name|setup-full|ergoms> [lines]
+    summary: Service log or CLI session (setup-full.log / ergoms.log)
   - name: setup-full
     summary: Full initial setup; Redis/nginx — when ERGO_BROKER=redis / ERGO_PROXY=nginx
   - name: install-cli
-    summary: Check that local ergoms is on PATH
+    summary: Check local ergoms and on Linux create /usr/local/bin/ergoms
   - name: uninstall-cli
-    summary: 'Message: local CLI under core/deployment/bin is not removed'
+    summary: Remove the /usr/local/bin/ergoms symlink; files in bin are kept
 - id: development
   title: Local development
   commands:
   - name: dev
     summary: Start API with cache warmup (mode from ERGO_ENV)
   - name: start-all
-    summary: API, client, Media API, worker, and beat (without OS services)
+    summary: DB logs, Redis, Meilisearch, and Jupyter (if enabled), API, client, Media API, worker, and beat (without OS services)
   - name: start-api
     summary: API only
   - name: start-module
     invoke: ergoms start-module --module=<name>
-    summary: HTTP API of a single module (MODULE_RUNTIME=microservice)
+    summary: HTTP API of a single module (MODULE_RUNTIME=microservice; HOST_PROFILE and MODULE_PROCESS_PROFILE in env)
   - name: start-client
     summary: Client (Vite, or nginx when NGINX_ENABLED=true)
   - name: start-media
     summary: Media API
   - name: start-worker
-    invoke: ergoms start-worker [--worker=<имя>]
-    summary: Celery worker
+    invoke: ergoms start-worker [--worker=<name>] [--module=<name>]
+    summary: Celery worker (--module listens to all queues of that module)
   - name: start-beat
-    summary: Celery beat
+    invoke: ergoms start-beat [--module=<name>]
+    summary: Celery beat (core schedule, or one module with --module)
   - name: start-jupyter
     summary: JupyterLab with Django core (modes local/lan/nginx — API_JUPYTER_* in .env)
+  - name: start-jupyter-dev
+    summary: JupyterLab in development mode when ERGO_JUPYTER is not none
+  - name: stop-jupyter-dev
+    summary: Stub to stop JupyterLab (the process ends with the terminal)
   - name: stop-worker
     summary: Stop all Celery workers
   - name: stop-beat
@@ -84,6 +95,12 @@ sections:
   - name: resource-usage
     invoke: ergoms resource-usage [--json] [-w] [--interval N]
     summary: RAM/CPU usage of ERGO MS processes on the host
+  - name: celery-balance
+    invoke: ergoms celery-balance [--dry-run] [--watch] [--json]
+    summary: Celery budget and concurrency (observe / recommend / auto)
+  - name: loadtest
+    invoke: ergoms loadtest [--profile …] [--isolated-db|--docker-isolated] | --find-limit … | --cleanup-users
+    summary: API/pages load test (Locust), find-limit, DB isolation, or delete lt_* users
 - id: docker
   title: Docker Compose
   note: DOCKER_* variables and profiles — Docker section in .env.example. Ports — API_PORT, CLIENT_PORT, etc. DB — databases.yaml.
@@ -96,6 +113,10 @@ sections:
     summary: Bring the stack up (DOCKER_MODE, profiles from .env)
   - name: docker-down
     summary: Stop and remove containers
+  - name: docker-loadtest-up
+    summary: Start isolated loadtest stack (postgres-loadtest + api-loadtest) and migrate
+  - name: docker-loadtest-down
+    summary: Stop loadtest services (api-loadtest, postgres-loadtest)
   - name: docker-restart
     summary: down + up
   - name: docker-dev
@@ -132,11 +153,23 @@ sections:
   - name: install-deps
     summary: Python + npm, migrations, and cache warmup
   - name: python-install
-    summary: Install Python dependencies, remove unused packages and their cache under virtual_env/cache
+    summary: Install Python dependencies; --recreate-venv rebuilds the venv from portable Python
   - name: python-update
     summary: Update Python dependencies of core and modules (poetry update)
   - name: db-migrate
     summary: Apply migrations
+  - name: db-migrate-module
+    invoke: ergoms db-migrate-module --module=<name> [--database=alias] [--grant-role=role] [--all]
+    summary: Create schema m_<name> and migrate the module apps
+  - name: db-move-module-schema
+    invoke: ergoms db-move-module-schema --module=<name> [--dry-run] [--all]
+    summary: Move module tables from public or core to m_<name>; --all then moves core and drops public
+  - name: db-move-core-schema
+    invoke: ergoms db-move-core-schema [--dry-run] [--keep-public]
+    summary: Move leftover public objects to core and drop schema public
+  - name: data-inventory
+    invoke: ergoms data-inventory [--json]
+    summary: Map module FK/SQL couplings and extraction blockers
   - name: db-makemigrations
     summary: Create migration files
   - name: migrate-all
@@ -181,6 +214,8 @@ sections:
     summary: Redis in foreground for VS Code (closing the terminal stops Redis)
   - name: stop-redis-dev
     summary: Stop portable Redis dev sessions (after closing the terminal)
+  - name: start-db-dev
+    summary: Tail default database logs by ERGO_DB for VS Code Start All Services
   - name: start-nginx-dev
     summary: Nginx in foreground after API is ready (closing the terminal stops nginx)
   - name: stop-nginx-dev
@@ -199,8 +234,12 @@ sections:
     summary: Invalidate caches and warm them up again
   - name: generate-secret
     summary: Generate a secret for .env (API_SECRET_KEY / API_JWT_SIGNING_KEY)
+  - name: env
+    invoke: ergoms env [--show-example-values] [--strict] [--reset-from-example] [--yes] [--root PATH]
+    summary: Compare .env with .env.example; --reset-from-example applies templates and keeps existing secrets
   - name: geoip-download
     summary: Download the GeoIP database (DB-IP City Lite)
+
   - name: geoip-backfill
     summary: Backfill city/country in sessions from GeoIP
   - name: i18n-makemessages
@@ -229,17 +268,37 @@ sections:
   - name: safe-drop-app
     summary: Safely drop a Django app
   - name: core-rules-check
-    summary: 'Core checks: module isolation, bridge contract schemas, console.error, native select, modules.* imports, mid-indent/ast.parse,
+    summary: 'Core checks: module isolation, bridge contract schemas, microservice manifests, cross-schema FK, console.error, native select, modules.* imports, mid-indent/ast.parse,
       BOM/LF in deployment scripts'
+  - name: deps-audit
+    invoke: ergoms deps-audit
+    summary: Check Python and npm dependencies for known vulnerabilities (OSV, npm audit); High/Critical fail the command
+  - name: security-modes
+    summary: 'ERGO_SECURITY levels reference (stage 2: profile fills unset keys; does not write .env)'
+  - name: security-check
+    summary: Report whether the install matches the security level (stage 2)
   - name: deployment-test
     invoke: ergoms deployment-test
     summary: Deployment unit tests (docker_runtime, ergo_modes, env_resolvers, recipes, nginx render) without Docker daemon
+  - name: deployment-scenario-test
+    invoke: ergoms deployment-scenario-test
+    summary: Isolated host and Docker scenario runs (separate ports and directories; does not change the workspace .env)
+  - name: test_system
+    invoke: ergoms test_system [--with-scenario] [--spec host_sqlite_direct]
+    summary: Deployment unit tests on Windows and Linux; --with-scenario runs an isolated spec without installing NSSM/systemd
+  - name: system-test
+    invoke: ergoms system-test [--suite unit|install|commands|scenarios|security|performance|browser|os-services|all] [--launch docker|host|os-services] [--spec host_sqlite_direct]
+    summary: Isolated from-scratch system tests (unit, install, commands, scenarios, security, speed, browser, OS services)
+
   - name: ps1-encoding-check
     invoke: ergoms ps1-encoding-check [--fix]
     summary: Check UTF-8 BOM in deployment .ps1 files with Cyrillic (Windows PowerShell 5.1)
   - name: sh-encoding-check
     invoke: ergoms sh-encoding-check [--fix]
     summary: Check LF without BOM in deployment .sh files (Linux shebang and source)
+  - name: upload-limits-check
+    invoke: ergoms upload-limits-check
+    summary: Upload limits report (MEDIA_UPLOAD_MAX_SIZE, direct-upload, nginx client_max_body_size)
   - name: test-smtp
     summary: Verify SMTP and send a test email
 - id: service_aliases
@@ -346,6 +405,33 @@ sections:
     summary: Redis status
   - name: test-redis
     summary: Check with redis-cli ping
+- id: meilisearch
+  title: Meilisearch (BM25 search)
+  note: Portable under virtual_env/packages/meilisearch. Automatic in setup-full when ERGO_SEARCH_ENABLED=true; OS service via install-services. See env/search.env.example.
+  commands:
+  - name: install-meilisearch
+    summary: Install portable Meilisearch
+  - name: install-meilisearch-service
+    summary: Install Meilisearch as OS service (NSSM / systemd)
+  - name: uninstall-meilisearch
+    summary: Stop Meilisearch (--purge removes packages and data)
+  - name: start-meilisearch
+    summary: Start Meilisearch (service or process)
+  - name: stop-meilisearch
+    summary: Stop Meilisearch
+  - name: restart-meilisearch
+    summary: Restart Meilisearch
+  - name: status-meilisearch
+    summary: Meilisearch status
+  - name: test-meilisearch
+    summary: Meilisearch /health check
+  - name: start-meilisearch-dev
+    summary: Start Meilisearch in development mode (terminal + logs)
+  - name: stop-meilisearch-dev
+    summary: Stop portable Meilisearch after closing the development terminal
+  - name: search-reindex
+    invoke: ergoms search-reindex [--index=core_users]
+    summary: Reindex Meilisearch (all indexes or one)
 - id: packages
   title: Portable packages
   note: 'Registry under virtual_env/packages: core (core_packages.yaml) and modules (packages.yaml). redis/nginx services
@@ -362,12 +448,23 @@ sections:
   - name: package-uninstall
     invoke: ergoms package-uninstall <name> [--purge-extra]
     summary: Remove the package directory (--purge-extra also removes extra_dirs)
+- id: huggingface
+  title: Hugging Face snapshots
+  note: 'Registry under virtual_env/trained_models/huggingface: modules/*/huggingface_models.yaml. Not ollama pull and not packages.yaml.'
+  commands:
+  - name: huggingface-models
+    summary: List snapshots from huggingface_models.yaml and on-disk status
+  - name: pull-huggingface-models
+    invoke: ergoms pull-huggingface-models [--force] [--repo org/name] [--include-optional]
+    summary: Download required snapshots (automatic in setup-full). Skips snapshots already in trained_models
 - id: postgres
   title: PostgreSQL (portable)
-  note: Automatic in setup-full when no system service is present. Directory virtual_env/packages/postgres.
+  note: Automatic in setup-full when ERGO_DB=portable_postgres. Directory virtual_env/packages/postgres. install-services also registers the OS service.
   commands:
   - name: install-postgres
     summary: Install portable PostgreSQL, the service, and the ergo_ms database
+  - name: install-postgres-service
+    summary: Register the portable PostgreSQL OS service (setup-full and install-services)
   - name: uninstall-postgres
     summary: Stop PostgreSQL (--purge / -Purge removes packages/postgres)
   - name: start-postgres

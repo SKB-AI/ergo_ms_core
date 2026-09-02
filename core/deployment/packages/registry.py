@@ -117,6 +117,7 @@ def _parse_package(
     marker_windows = str(data.get('marker_windows') or '').strip() or None
     marker_linux = str(data.get('marker_linux') or '').strip() or None
     extra_dirs = _as_str_tuple(data.get('extra_dirs'))
+    always_run = bool(data.get('always_run', False))
 
     platforms: dict[str, PlatformArchive] = {}
     platforms_raw = data.get('platforms')
@@ -150,6 +151,7 @@ def _parse_package(
         marker_windows=marker_windows,
         marker_linux=marker_linux,
         extra_dirs=extra_dirs,
+        always_run=always_run,
         platforms=platforms,
         raw=dict(data),
     )

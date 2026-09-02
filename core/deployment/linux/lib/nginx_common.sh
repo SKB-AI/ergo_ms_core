@@ -4,7 +4,7 @@
 
 NGINX_VERSION='1.27.4'
 NGINX_CONF_NAME='ergo_ms'
-NGINX_SERVICE_NAME='ergo_ms_nginx'
+NGINX_SERVICE_NAME="$(ergo_service_name nginx)"
 
 # shellcheck source=portable_archive.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/portable_archive.sh"

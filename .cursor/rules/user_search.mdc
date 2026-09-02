@@ -1,10 +1,12 @@
 ---
-description: Поиск пользователей в API — user_search.py, apply_user_search, build_user_search_q
+description: Поиск пользователей в API — facade над core.search; см. search.mdc
 alwaysApply: false
 ---
 # Поиск пользователей (API)
 
-Файл: `core/api/src/core/cms/adp/services/user_search.py`.
+**Новый код** — [`search.mdc`](search.mdc): `search_queryset('core_users', q, qs)`.
+
+Файл `core/api/src/core/cms/adp/services/user_search.py` — **facade** для обратной совместимости:
 
 ```python
 from src.core.cms.adp.services.user_search import apply_user_search, build_user_search_q, resolve_user_by_search
@@ -12,12 +14,10 @@ from src.core.cms.adp.services.user_search import apply_user_search, build_user_
 
 | Задача | Функция |
 |--------|---------|
-| Фильтр списка | `apply_user_search(qs, search)` |
+| Фильтр списка | `apply_user_search(qs, search)` → Meili или fallback |
 | Связь user__ | `apply_user_search(qs, search, prefix='user__')` |
 | OR с другими полями | `build_user_search_q(search, prefix='owner__')` |
 | Найти одного User по строке | `resolve_user_by_search(text)` |
-
-Не дублируй `Q(first_name__icontains=...)` и не используй `SearchFilter` на User — только эти функции.
 
 ```python
 # BAD — свой поиск по User
@@ -25,15 +25,16 @@ User.objects.filter(Q(first_name__icontains=q) | Q(email__icontains=q))
 
 # GOOD
 apply_user_search(qs, search)
+# или
+search_queryset('core_users', search, qs, page=page, page_size=page_size)
 ```
 
-Новые поля для поиска — добавляй в `user_search.py`, не в модулях.
-
-Эталоны: `views_roles.py` (ядро); в модулях — `modules/<name>/api/views/` с `apply_user_search`.
+Новые поля индекса users — в `core.search.core_indexes`, не в модулях.
 
 ## Связанные правила
 
 | Тема | Файл |
 |------|------|
+| Централизованный поиск | [`search.mdc`](search.mdc) |
 | API, ViewSet | [`api_code.mdc`](api_code.mdc) |
 | Поиск на клиенте | [`search-input.mdc`](search-input.mdc) |

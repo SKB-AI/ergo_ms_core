@@ -1,5 +1,22 @@
 {
   "$schema": "http://json.schemastore.org/vsls",
-  "gitignore": "none",
-  "excludeFiles": [".env", "databases.yaml"]
+  "gitignore": "exclude",
+  "excludeFiles": [
+    ".env",
+    ".env.*",
+    "!.env.example",
+    "env/*",
+    "!env/*.example",
+    "modules/*/.env",
+    "modules/*/.env.*",
+    "!modules/*/.env.example",
+    "databases.yaml",
+    "core/deployment/docker/.compose.env",
+    "core/deployment/docker/.compose.databases.yaml",
+    "**/redis.conf",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx"
+  ]
 }

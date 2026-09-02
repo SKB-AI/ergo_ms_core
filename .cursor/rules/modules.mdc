@@ -1,7 +1,28 @@
 ---
 description: Модули modules/ — структура, регистрация, ModuleBridge, theme-defaults.js, Celery, git-submodule
 globs:
-  - "modules/**"
+  - "modules/*/api/apps.py"
+  - "modules/*/api/integrations.py"
+  - "modules/*/api/celery_config.py"
+  - "modules/*/api/celery_beat_config.py"
+  - "modules/*/api/permission_catalog.py"
+  - "modules/*/api/schema.yaml"
+  - "modules/*/api/bridge_manifest.yaml"
+  - "modules/*/api/search_indexes.py"
+  - "modules/*/client/js/routes.js"
+  - "modules/*/client/js/integrations.js"
+  - "modules/*/client/js/theme-defaults.js"
+  - "modules/*/client/js/endpoints.js"
+  - "modules/*/client/js/permission-rules.js"
+  - "modules/*/client/js/routeGuard.js"
+  - "modules/*/client/js/locales.js"
+  - "modules/*/integrations.yaml"
+  - "modules/*/process_roles.yaml"
+  - "modules/*/host_lifecycle.yaml"
+  - "modules/*/packages.yaml"
+  - "modules/*/huggingface_models.yaml"
+  - "modules/*/vscode.tasks.yaml"
+  - "modules/*/task_footprint.yaml"
 alwaysApply: false
 ---
 # Модули
@@ -17,7 +38,10 @@ modules/<имя>/
 │   ├── models.py, views.py, urls.py, serializers.py
 │   ├── tasks.py             # фоновые задачи (если нужны)
 │   ├── celery_config.py     # очереди Celery (если нужны)
-│   └── integrations.py      # операции для моста (если нужны)
+│   ├── integrations.py      # операции для моста (если нужны)
+│   ├── bridge_manifest.yaml # ops/groups при MODULE_RUNTIME=microservice
+│   ├── schema.yaml          # схема PostgreSQL m_<name>, isolated
+│   └── search_indexes.py    # индексы поиска (uid с префиксом модуля)
 ├── client/
 │   ├── js/
 │   │   ├── routes.js        # страницы (если есть UI)
@@ -31,20 +55,51 @@ modules/<имя>/
 │   │   └── theme-bootstrap.scss  # обязателен вместе с theme-defaults.js
 │   ├── pages/ или components/
 │   └── ui/                  # общий UI-kit (по образцу других модулей с client/ui)
+├── mcp/                     # MCP-сервер для Cursor (необязательно)
 ├── .cursor/rules/           # правила Cursor модуля (*.mdc; необязательно)
-├── AGENTS.md                # короткий fallback для агента (необязательно)
+├── AGENTS.md                # короткий fallback для агента (обязательно)
+├── README.md                # обзор для человека (обязательно)
 ├── ergoms.conf              # команды модуля (необязательно)
 ├── ergoms.help.yaml         # справка для ergoms help module (если есть ergoms.conf)
 ├── process_roles.yaml       # роли процессов для ergoms resource-usage (если есть свой демон)
+├── task_footprint.yaml      # footprint задач для ergoms celery-balance (если есть Celery)
 ├── host_lifecycle.yaml      # install/uninstall/stop демона в install-services и тестах (если есть служба/процесс)
 ├── packages.yaml            # portable-пакеты в virtual_env/packages (если модуль ставит бинарники)
+├── huggingface_models.yaml  # снимки Hugging Face в virtual_env/trained_models/huggingface/
 ├── vscode.tasks.yaml        # задачи Run Task + include_in setup-full/start-all (необязательно)
-└── README.md
+├── integrations.yaml        # depends: requires (обязательные) / extends (опциональные)
 ```
 
 Папка клиента: `client/js/`, **не** `client/src/js/`.
 
+Ядро **не импортирует** домен модуля. Допустимо только сканирование hook-файлов с фиксированным именем (`importlib` / `import.meta.glob`), не `from modules.<name>.api.models import …`.
+
+| Область ядра | Hook | Эталон |
+|--------------|------|--------|
+| Django apps | `apps.py` | [`auto_config.py`](../../core/api/src/core/utils/auto_api/auto_config.py) |
+| Права ADP | `permission_catalog.py` | [`permission_catalog.py`](../../core/api/src/core/cms/adp/services/permission_catalog.py) |
+| Celery | `celery_config.py` | [`celery/manager.py`](../../core/api/src/core/utils/celery/manager.py) |
+| Клиент: routes / endpoints / integrations | `client/js/*` | [`ModuleLoader.js`](../../core/client/src/modules/core/ModuleLoader.js) |
+| Тема | `theme-defaults.js` | [`ThemeDefaultsManager.js`](../../core/client/src/modules/themes/ThemeDefaultsManager.js) |
+| i18n | `locales.js` | [`LocaleManager.js`](../../core/client/src/modules/i18n/LocaleManager.js) |
+| Route guards | `routeGuard.js` | [`RouteGuardsManager.js`](../../core/client/src/modules/routing/RouteGuardsManager.js) |
+| LayoutPlugin | `layout.plugin_registry` | [`layoutPluginRegistry.js`](../../core/client/src/integrations/layoutPluginRegistry.js) |
+| Session-scope | `session_scope.module_context` | [`sessionScopedModuleContext.js`](../../core/client/src/integrations/sessionScopedModuleContext.js) |
+| Claims при логине | `session.restore_claims` | [`views_auth.py`](../../core/api/src/core/cms/adp/views_auth.py) |
+| Меню CMS | миграции меню | [`restore_menu.py`](../../core/api/src/core/cms/management/commands/restore_menu.py) |
+| resource-usage | `process_roles.yaml` | [`process-roles.mdc`](process-roles.mdc) |
+| Celery balance | `task_footprint.yaml` | [`celery-balance.mdc`](celery-balance.mdc) |
+| OS-службы | `host_lifecycle.yaml` | [`host-lifecycle.mdc`](host-lifecycle.mdc) |
+| Portable-пакеты | `packages.yaml` | [`packages.mdc`](packages.mdc) |
+| Снимки Hugging Face | `huggingface_models.yaml` | [`huggingface-models.mdc`](huggingface-models.mdc) |
+| Run Task / setup-full | `vscode.tasks.yaml` | [`module-vscode-tasks.mdc`](module-vscode-tasks.mdc) |
+| Схема PostgreSQL | `api/schema.yaml` | [`modularization.mdc`](modularization.mdc) |
+| HTTP-мост | `api/bridge_manifest.yaml` | [`modularization.mdc`](modularization.mdc) |
+| Поиск | `search_indexes.py` | [`discovery.py`](../../core/api/src/core/search/discovery.py) |
+
 Правила агента Cursor для модуля — в `.cursor/rules/*.mdc` (globs `modules/<имя>/**`) и кратко в `AGENTS.md`. Подхват `.mdc` в Cursor: расширение **ERGO MS Module Cursor Rules** из [`.vscode/extensions/module-rules/`](../../.vscode/extensions/module-rules/) (`ergoms install-extensions`). Платформенные правила остаются в корневом `.cursor/rules/`. Подробности: [`module-cursor-rules.mdc`](module-cursor-rules.mdc), [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc).
+
+При правках модуля **обновляй его документацию** (`AGENTS.md`, `.mdc`, `README.md`, help) вместе с кодом — [`module-docs.mdc`](module-docs.mdc). Это исключение из общего «не пиши docs без просьбы» в [`docs.mdc`](docs.mdc).
 
 Учёт модульного процесса в `ergoms resource-usage` — только через `process_roles.yaml` ([`process-roles.mdc`](process-roles.mdc)); не правь классификатор ядра ради одного модуля.
 
@@ -52,21 +107,32 @@ Install/uninstall/stop модульного демона в `ergoms install-serv
 
 Portable-бинарники модуля (ollama, ffmpeg и т.п.) — только через `packages.yaml` и `ergoms package-install` ([`packages.mdc`](packages.mdc)); не дублируй download в Django management и не хардкодь имена модулей в ядре.
 
+Снимки Hugging Face (`org/name`) — только через `huggingface_models.yaml` и `ergoms pull-huggingface-models` ([`huggingface-models.mdc`](huggingface-models.mdc)); веса в `virtual_env/trained_models/huggingface/`, не в `ollama_models.yaml`, не в `~/.cache` и не в кэш модуля.
+
 Задачи VS Code / Cursor (Run Task) и участие в **Setup Full** / **Start All** — только через `vscode.tasks.yaml` (`include_in: setup-full` / `start-all`): hook модульности, не правка монолита ядра. Подробности — [`module-vscode-tasks.mdc`](module-vscode-tasks.mdc); формат shell-задач ядра — [`vscode-tasks.mdc`](vscode-tasks.mdc).
 
 Вложенные подприложения (`client/<раздел>/js/routes.js`) подхватываются для маршрутов и `integrations.js`. Файлы `endpoints.js`, `permission-rules.js` — только из `client/js/` (или re-export оттуда).
 
 ## Регистрация на сервере
 
+Зависимости модулей — корневой [`integrations.yaml`](../../core/api/src/core/utils/auto_api/module_integrations.py) (имена папок `modules/<name>`):
+
+```yaml
+# modules/<name>/integrations.yaml
+requires:          # обязательные: нет модуля → потребитель не загружается (WARNING), остальные стартуют
+  - <provider>
+extends:           # опциональные: нет модуля → старт OK; фичи через bridge.has / default
+  - <optional_enhancer>
+```
+
+- `requires` — обязательная интеграция и дуга порядка загрузки (зависимость раньше потребителя). Нет зависимости (отключена или нет в `modules/`) — потребитель пропускается, Django не падает целиком. Ключ в `BRIDGE_SERVICE_URLS` (или имя в `MICROSERVICE_MODULES`) закрывает `requires` без локальной папки: сосед доступен по HTTP-мосту. Удалённое имя не заноси в `MICROSERVICE_MODULES` на этом хосте.
+- `extends` — расширяющая интеграция; в топсорт **не** входит (иначе цикл, когда A.`extends` B и B.`requires` A).
+- Только односторонние `requires`: мягкий `bridge.has` в обе стороны не дублируй в `requires`.
+
 ```python
 # api/apps.py
 class MyModuleConfig(AppConfig):
     name = 'modules.<name>.api'
-    # Если ready()/import нужен bridge другого модуля — объяви зависимость
-    # (имена папок modules/<name>). Discovery топологически упорядочит INSTALLED_APPS.
-    # Только односторонние дуги: мягкий bridge.has в обе стороны не дублируй
-    # (иначе цикл <name_a>↔<name_b>).
-    module_requires = ('<provider>',)
 
     def ready(self):
         from . import integrations  # если есть мост
@@ -96,7 +162,7 @@ class MyModuleConfig(AppConfig):
 
 **Настройки клиента модуля** — `CLIENT_<МОДУЛЬ>_*` в корневом `.env` или `modules/<имя>/.env`, маппинг в [`vite.config.js`](../../core/client/vite.config.js) (`import.meta.env.CLIENT_*`). В модуле читай через **локальный** `client/js/clientEnv.js`, не через ядровой `clientEnv.js` и не `VITE_*`.
 
-**LayoutPlugin и offcanvas** — регистрация в `client/js/integrations.js` через группу `layout.plugin_registry` (см. [`layoutPluginRegistry.js`](../../core/client/src/integrations/layoutPluginRegistry.js)). Ядро не хранит маппинг `route_name → module`.
+**LayoutPlugin и offcanvas** — регистрация в `client/js/integrations.js` через группу `layout.plugin_registry` (см. [`layoutPluginRegistry.js`](../../core/client/src/integrations/layoutPluginRegistry.js)). Ядро не хранит маппинг `route_name → module`. Файл `client/LayoutPlugin.vue` не импортируй на верхнем уровне библиотеки, которые при загрузке модуля вызывают `.register` (графики и подобные). Иначе сбой плагина ломает оболочку кабинета; выноси в `defineAsyncComponent`.
 
 **Session-scoped модули** — группа моста `session_scope.module_context`. Регистрация в `client/js/integrations.js`: `bridge.provideMany(SESSION_SCOPED_MODULE_CONTEXT_GROUP, moduleKey, { pathPrefix, homeRoute, ... })` — **без import из модуля-владельца scope**. Хелперы — [`sessionScopedModuleContext.js`](../../core/client/src/integrations/sessionScopedModuleContext.js), session-scope guard — [`sessionScopeGuard.js`](../../core/client/src/js/session/sessionScopeGuard.js), активность scope — [`sessionScopeGating.js`](../../core/client/src/integrations/sessionScopeGating.js). Каталог контрактов — [`module-contracts.mdc`](module-contracts.mdc). Домен владельца scope (welcome API, store) — в `modules/<host_module>/client/js/` (свой `*Guard.js`), не в ядре.
 
@@ -104,13 +170,13 @@ class MyModuleConfig(AppConfig):
 
 Пункты бокового меню — **миграция API** (`MenuMigrationHelper`, эталон `modules/<name>/api/migrations/*_add_menu.py`); маршруты — `client/js/routes.js`. Порядок и видимость — в CMS. Подробности: [`menu.mdc`](menu.mdc).
 
-Пункты выпадающего меню пользователя в шапке (`UserMenu`) — через `bridge.provideMany` в группе `header.userMenu.items`. Эталон: `modules/<name>/client/js/headerUserMenu.js`, подключается из `integrations.js`. Сбор в ядре — [`headerUserMenu.js`](../../core/client/src/integrations/headerUserMenu.js). Это **не** боковое меню: sidebar — миграции API, шапка — ModuleBridge.
+Пункты выпадающего меню пользователя в шапке (`UserMenu`) — через `bridge.provideMany` в группе `header.userMenu.items`. Эталон: `modules/<name>/client/js/headerUserMenu.js`, подключается из `integrations.js`. Сбор в ядре — [`headerUserMenu.js`](../../core/client/src/integrations/headerUserMenu.js). Это **не** боковое меню: sidebar — миграции API, шапка — ModuleBridge. Иконка — строка Lucide PascalCase (`icon: 'Building2'`), не Vue-компонент — [`icons.mdc`](icons.mdc).
 
-Пункты меню приложений (`AppsMenu` в toolbar) — через `bridge.provideMany` в группе `apps.menu.items`. Эталон: `modules/<name>/client/js/appsMenu.js`, подключается из `integrations.js`. Сбор в ядре — [`appsMenu.js`](../../core/client/src/integrations/appsMenu.js). В toolbar AppsMenu и уведомления показываются одновременно.
+Пункты меню приложений (`AppsMenu` в toolbar) — через `bridge.provideMany` в группе `apps.menu.items`. Эталон: `modules/<name>/client/js/appsMenu.js`, подключается из `integrations.js`. Имя группы берите из `@/integrations/moduleContracts.js`, не из `appsMenu.js`: иначе remote тянет сборщик оболочки. Сбор в ядре — [`appsMenu.js`](../../core/client/src/integrations/appsMenu.js). Кнопка скрыта без пунктов; не ставьте `isVisible` ради права модуля. Иконка — строка (`icon: 'Bot'`), рендер в ядре через `LucideIcon`.
 
 Бренд в шапке сайдбара / mobile header — опционально через `shell.sidebar_brand` ([`sidebarBrand.js`](../../core/client/src/integrations/sidebarBrand.js)): модуль регистрирует `{ id, component, match?, to?, measureText? }`; без match ядро оставляет `SiteWordmark`.
 
-Плавающие виджеты оболочки (мини-чат и т.п.) — группа `shell.floating_widgets` (`{ id, component, order? }`), хост [`FloatingWidgetsHost.vue`](../../core/client/src/components/FloatingWidgetsHost.vue) в `LayoutMenu`. Не использовать `LayoutPlugin` ради плавающего UI.
+Плавающие виджеты оболочки (мини-чат и т.п.) — группа `shell.floating_widgets` (`{ id, component, order?, isVisible? }`), хост [`FloatingWidgetsHost`](../../core/client/src/components/FloatingWidgetsHost.vue) в `LayoutMenu`. Не использовать `LayoutPlugin` ради плавающего UI.
 
 ## Темы оформления модуля
 
@@ -149,7 +215,7 @@ class MyModuleConfig(AppConfig):
 
 **Сервер:** внутри модуля — относительные; из ядра — `from src.core...`; из другого модуля — **запрещено**.
 
-**Ядро → модуль:** бизнес-код модуля — **запрещён**; hook-файлы для discovery (apps, `permission_catalog`, `celery_config`, `client/js/theme-defaults.js`, `client/js/*`) — **допустимы** через инфраструктуру ядра. Подробности — [`struct.mdc`](struct.mdc) → «Импорты из `modules/` в ядре».
+**Ядро → модуль:** бизнес-код модуля — **запрещён**; hook-файлы для discovery — **допустимы** через инфраструктуру ядра (таблица выше).
 
 **Клиент:** из ядра — `@/...`; из другого модуля — **запрещено**.
 
@@ -172,6 +238,18 @@ def _handler(user):
 ```
 
 Имена операций: `'модуль.действие'`. Если провайдера нет — `call` вернёт `default`.
+
+Платформенный op ядра (логин) — opaque dict claims, ключи ядру неизвестны:
+
+```python
+# core/.../views_auth.py
+restore_claims = bridge.call(SESSION_RESTORE_CLAIMS, user=user) or {}
+
+# modules/<host>/api/integrations.py
+@bridge.provide_op(SESSION_RESTORE_CLAIMS)
+def _restore_session_claims(*, user=None, **_):
+    return get_restorable_session_claims(user)
+```
 
 **Запрещено** на уровне модуля (import-time):
 
@@ -196,6 +274,7 @@ def get_my_serializer_class():
 
 - Задачи: `api/tasks.py`
 - Конфиг: `api/celery_config.py`, маршрут `'modules.<имя>.api.tasks.*'`
+- Footprint (опционально): `task_footprint.yaml` — [`celery-balance.mdc`](celery-balance.mdc)
 
 ## Git
 
@@ -229,6 +308,7 @@ def get_my_serializer_class():
 | Уведомления, аудит | [`notifications.mdc`](notifications.mdc), [`audit.mdc`](audit.mdc) |
 | Человекочитаемо | [`.docs/architecture.md`](../../.docs/architecture.md) |
 | Боковое меню | [`menu.mdc`](menu.mdc) |
+| Иконки Lucide | [`icons.mdc`](icons.mdc) |
 | Справка ergoms модуля | [`ergoms-module-help.mdc`](ergoms-module-help.mdc) |
 | Роли процессов (resource-usage) | [`process-roles.mdc`](process-roles.mdc) |
 | Host lifecycle (тесты deployment) | [`host-lifecycle.mdc`](host-lifecycle.mdc) |
@@ -236,5 +316,9 @@ def get_my_serializer_class():
 | Модульные задачи Run Task | [`module-vscode-tasks.mdc`](module-vscode-tasks.mdc) |
 | Формат задач ядра (tasks.json) | [`vscode-tasks.mdc`](vscode-tasks.mdc) |
 | Правила Cursor модуля | [`module-cursor-rules.mdc`](module-cursor-rules.mdc) |
+| Документация модуля (AGENTS/README) | [`module-docs.mdc`](module-docs.mdc) |
+| Вынос в отдельный процесс / схему | [`modularization.mdc`](modularization.mdc) |
+| MCP модуля | [`mcp.mdc`](mcp.mdc) |
+| Балансировщик Celery | [`celery-balance.mdc`](celery-balance.mdc) |
 | Стиль правил и docs | [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc) |
 | Redis, nginx (prod) | [`deployment-infra.mdc`](deployment-infra.mdc) |

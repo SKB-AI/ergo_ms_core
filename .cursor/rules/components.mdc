@@ -1,5 +1,5 @@
 ---
-description: Индекс UI-компонентов ядра — SelectBox, SearchInput, DecimalInput, FormCard, FormField, FilterMenu, DropDown, DataTable, UserAvatar
+description: Индекс UI-компонентов ядра — SelectBox, SearchInput, DecimalInput, DatePicker, ToggleSwitch, TriStateSwitch, DropZone, FormCard, FormField, SettingsCard, SettingsCardRow, FilterMenu, DropDown, DataTable, UserAvatar
 alwaysApply: false
 ---
 
@@ -14,7 +14,12 @@ alwaysApply: false
 | Выбор из списка | `SelectBox` | [`select-box.mdc`](select-box.mdc) |
 | Текстовый поиск | `SearchInput` | [`search-input.mdc`](search-input.mdc) |
 | Ввод десятичного числа (цифры, `.`/`,`) | `DecimalInput` | этот раздел |
+| Выбор даты | `DatePicker` | этот раздел |
+| Бинарный тумблер вкл/выкл | `ToggleSwitch` | этот раздел |
+| Три позиции: запрещено / не задано / разрешено | `TriStateSwitch` | этот раздел |
+| Зона выбора файлов (клик + перетаскивание) | `DropZone` | этот раздел |
 | Форма: карточка + строки label/поле | `FormCard`, `FormField` | этот раздел |
+| Настройки: карточка + строки label/hint/контрол | `SettingsCard`, `SettingsCardRow` | этот раздел |
 | Несколько фильтров в toolbar | `FilterMenu` | [`filter-menu.mdc`](filter-menu.mdc) |
 | Меню действий (⋯, контекст) | `DropDown` | этот раздел |
 | Боковое меню приложения | `MenuList`, миграции `MenuItem` | [`menu.mdc`](menu.mdc) |
@@ -25,7 +30,9 @@ alwaysApply: false
 | Multi-select выбор пользователей | `MemberPickerModal` | этот раздел |
 | Аватар пользователя | `UserAvatar` | этот раздел |
 | Контентное изображение (режим без картинок) | `ContentImage` | [`client-a11y.mdc`](client-a11y.mdc) |
+| Предпросмотр фото (галерея, зум) | `ImageLightbox` (`backdrop`: `dim` / `blur`) | этот раздел |
 | Skip-link / landmarks | `SkipLink`, `<main id="main-content">` | [`client-a11y.mdc`](client-a11y.mdc) |
+| Динамические Lucide-иконки | `LucideIcon` (имя PascalCase) | [`icons.mdc`](icons.mdc) |
 
 Режимы анимаций, картинок и помощи диктору — [`client-a11y.mdc`](client-a11y.mdc) (`useUiModes`, `data-ergo-*`).
 
@@ -42,6 +49,113 @@ alwaysApply: false
 | `showSteppers` | стрелки вверх/вниз (`step`, опционально `min`/`max`); по умолчанию выкл. |
 | `inputClass` | классы на `<input>` (`form-control-sm` и т.п.) |
 
+## Дата — DatePicker
+
+Компонент: `@/components/DatePicker.vue`. Обёртка над `@vuepic/vue-datepicker`.
+
+`v-model` — **строка** `YYYY-MM-DD`; при `enableTime` — `YYYY-MM-DDTHH:mm`; при `monthPicker` — `YYYY-MM`. Нативный `input type="date"` не используй.
+
+```vue
+<script setup>
+import DatePicker from '@/components/DatePicker.vue'
+</script>
+
+<template>
+  <DatePicker id="start-date" v-model="startDate" />
+  <DatePicker id="end-date" v-model="endDate" :min-date="startDate || null" />
+  <DatePicker id="start-at" v-model="startAt" enable-time />
+  <DatePicker id="start-at-12" v-model="startAt" enable-time time-format="12" />
+  <DatePicker id="from-month" v-model="fromMonth" month-picker :min-date="minMonth" :max-date="maxMonth" />
+</template>
+```
+
+| Prop | Когда |
+|------|-------|
+| `minDate` / `maxDate` | граница календаря (`YYYY-MM-DD` / `YYYY-MM` / `YYYY-MM-DDTHH:mm` или `Date`) |
+| `id` | для `<label for>` / `FormField` `label-for` |
+| `placeholder` | своя подсказка; иначе `components.datePicker.placeholder` / `placeholderDateTime` / `placeholderDateTime12` / `placeholderMonth` |
+| `enableTime` | выбор и отображение времени (по умолчанию выкл.) |
+| `timeFormat` | `'24'` (по умолчанию) или `'12'`; только вместе с `enableTime` |
+| `monthPicker` | выбор месяца и года, значение `YYYY-MM` |
+| `disabled` | блокировка |
+| `invalid` | красная рамка (`is-invalid`) |
+
+## Тумблер — ToggleSwitch
+
+Компонент: `@/components/ToggleSwitch.vue`.
+
+iOS-стиль binary switch. Не копируй track/thumb в модулях.
+
+```vue
+<ToggleSwitch v-model="enabled" label="вручную" />
+
+<!-- Родитель сам меняет состояние (3-state cycle и т.п.) -->
+<ToggleSwitch
+  :model-value="status === 'allowed'"
+  manual
+  aria-label="Разрешено"
+  @activate="cycleStatus"
+/>
+```
+
+| Prop | Когда |
+|------|-------|
+| `modelValue` | вкл/выкл |
+| `label` | подпись справа от track |
+| `disabled` | блокировка |
+| `manual` | клик только `@activate`, без авто-переключения `modelValue` |
+| `ariaLabel` | a11y; иначе берётся `label` |
+
+## Трёхпозиционный тумблер — TriStateSwitch
+
+Компонент: `@/components/TriStateSwitch.vue`.
+
+Тот же iOS-track, что у `ToggleSwitch`, но бегунок стоит слева / по центру / справа. Не копируй track/thumb в модулях.
+
+Значения `modelValue`: `deny` (запрещено), `inherit` (не задано), `allow` (разрешено). Клик по трети дорожки ставит соответствующее значение; стрелки листают позиции.
+
+```vue
+<TriStateSwitch v-model="effect" aria-label="Персональное право" />
+```
+
+| Prop | Когда |
+|------|-------|
+| `modelValue` | `deny` / `inherit` / `allow` |
+| `label` | подпись справа от track |
+| `disabled` | блокировка |
+| `ariaLabel` | a11y; иначе берётся `label` или текущее значение |
+
+## Зона файлов — DropZone
+
+Компонент: `@/components/DropZone.vue`.
+
+Только зона выбора файлов (клик и перетаскивание). Список вложений, статусы загрузки и `mediaApiClient` остаются у родителя. Не копируй локальный dropzone в модуле.
+
+```vue
+<script setup>
+import DropZone from '@/components/DropZone.vue'
+</script>
+
+<template>
+  <DropZone
+    :compact="files.length > 0"
+    @files="onFiles"
+  />
+</template>
+```
+
+`@files` отдаёт `File[]`. Тексты по умолчанию — `components.dropZone.*`; при необходимости переопредели `title`, `hint`, `browse`, `ariaLabel`.
+
+| Prop | Когда |
+|------|-------|
+| `multiple` | по умолчанию `true`; `false` — один файл |
+| `compact` | меньшая высота, когда снизу уже есть список |
+| `disabled` | блокировка клика и drop |
+| `accept` | как у нативного `input` (`.pdf`, `image/*`) |
+| `title` / `hint` / `browse` | свои подписи вместо i18n ядра |
+| `ariaLabel` | a11y для input; иначе `components.dropZone.ariaLabel` |
+| `#icon` | своя иконка вместо `UploadCloud` |
+
 ## Формы — FormCard / FormField
 
 Компоненты: `@/components/FormCard.vue`, `@/components/FormField.vue`.
@@ -56,7 +170,7 @@ import FormField from '@/components/FormField.vue'
 
 <template>
   <FormCard>
-    <FormField label="Название" label-for="title" optional>
+    <FormField label="Название" label-for="title" required>
       <input id="title" v-model="title" type="text" class="form-control form-control-sm" />
     </FormField>
     <FormField label="Описание" label-for="desc" last>
@@ -72,13 +186,42 @@ import FormField from '@/components/FormField.vue'
 | Prop `FormField` | Когда |
 |------|-------|
 | `label` / `labelFor` | подпись и `for` |
-| `optional` | бейдж «Необязательно» (`common.optional`) |
+| `required` | красная звёздочка у обязательного поля |
 | `hint` / `#hint` | подсказка под полем |
 | `error` | текст ошибки |
 | `last` | без нижней границы (последняя строка) |
 | `align="center"` | чекбоксы и короткие контролы |
 
 Эталон: [`UserProfileFields.vue`](../../core/client/src/core/cms/adp/user/account/component/settings-panels/UserProfileFields.vue).
+
+## Настройки — SettingsCard / SettingsCardRow
+
+Компоненты: `@/components/SettingsCard.vue`, `@/components/SettingsCardRow.vue`.
+
+Карточки панелей пользовательских настроек (система, темы, тосты, безопасность, уведомления). Не копируй локальные `.settings-card*`.
+
+```vue
+<SettingsCard>
+  <SettingsCardRow label="Язык" label-for="lang">
+    <SelectBox id="lang" v-model="language" :options="options" :include-all-option="false" />
+  </SettingsCardRow>
+  <SettingsCardRow label="Звук" hint="Подсказка" control-size="auto" last>
+    <div class="form-check form-switch">…</div>
+  </SettingsCardRow>
+</SettingsCard>
+```
+
+| Prop / слот | Когда |
+|------|-------|
+| `SettingsCard` `overflowVisible` | палитра / dropdown выходит за карточку |
+| `SettingsCard` `#footer` | действия справа внизу карточки (как «Сохранить» в профиле) |
+| `SettingsCard` `showFooter` | плавно показать/скрыть футер (например, по тумблеру) |
+| `SettingsCardRow` `label` / `hint` / `labelFor` | подпись, подсказка, `for` |
+| `last` | без нижней границы |
+| `block` | контент на всю ширину без колонок label/control |
+| `controlSize` `md` / `sm` / `auto` | ширина слота контрола (SelectBox / компакт / switch/кнопка) |
+
+Эталон: панели в [`settings-panels/`](../../core/client/src/core/cms/adp/user/account/component/settings-panels/).
 
 ## Меню действий — DropDown
 
@@ -94,6 +237,7 @@ import FormField from '@/components/FormField.vue'
 | `dropdown-menu-class="dropdown-menu-end"` | выравнивание вправо от триггера |
 | `menu-min-width` | минимальная ширина меню (по умолчанию 160) |
 | `offset="0,N"` | зазор снизу/сверху, px |
+| `placement="right"` | открыть справа от триггера (длинные каталоги) |
 
 ### Когда DropDown, а когда SelectBox
 
@@ -108,7 +252,7 @@ import FormField from '@/components/FormField.vue'
 ```vue
 <script setup>
 import DropDown from '@/components/DropDown.vue'
-import { MoreHorizontal, Edit, Trash2 } from 'lucide-vue-next'
+import { MoreHorizontal, Edit, Trash2 } from '@lucide/vue'
 </script>
 
 <template>
@@ -134,7 +278,8 @@ import { MoreHorizontal, Edit, Trash2 } from 'lucide-vue-next'
 
 ### Обязательно
 
-- Загрузка списка — через prop **`fetchUsers({ search, activeTab, roleGroupId })`**, не через API модулей в ядре.
+- Загрузка списка — через prop **`fetchUsers({ q, search, activeTab, roleGroupId })`**, не через API модулей в ядре. `q` и `search` — одна и та же строка поиска.
+- Ключ выбора — opaque `public_id` / `user_ref`. `assignedUserIds` и `excludedUserIds` — те же ссылки, не числовой pk.
 - В модуле с доменной логикой — обёртка с `fetchUsers` (эталон: `modules/<name>/client/components/…MemberPickerModal.vue`).
 - Используй `ModalCenter` + `SearchInput` — не делай свой picker с нуля.
 

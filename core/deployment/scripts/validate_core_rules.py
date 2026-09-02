@@ -8,13 +8,17 @@
 - validate_module_isolation --scope=core --fail-on-warning (ядро)
 - validate_module_isolation --scope=all (отчёт по modules/, без падения CI)
 - validate_bridge_contracts --fail-on-warning (схемы дескрипторов моста)
-- запрет hardcoded имён модулей в runtime-коде ядра
+- запрет hardcoded имён модулей во всём ядре и правилах Cursor
+  (весь core/, .cursor/rules/ — код, комментарии, docstring, markdown)
 - запрет console.error в прикладном коде клиента (кроме logError.js / logger.js)
 - запрет нативного <select> / b-form-select в .vue ядра
 - запрет from modules. в core/api/src (дополнительный текстовый grep)
 - mid-indent / ast.parse для .py в core/api/src и core/deployment/scripts
 - UTF-8 BOM в .ps1 deployment с не-ASCII (Windows PowerShell 5.1)
 - LF без BOM в .sh deployment (Linux shebang и source)
+- сырой ModelViewSet в core/api без ObjectPermissionMixin / BaseModelViewSet / admin-маркера
+- README.md и AGENTS.md у каждого установленного модуля (есть api/apps.py или client/)
+- контракт logout: один POST на волну, nginx избыток → 204 (не 429)
 """
 
 from __future__ import annotations
@@ -45,11 +49,52 @@ from cli_locale import t  # noqa: E402
 from console_tags import format_console  # noqa: E402
 from validate_ps1_encoding import find_ps1_encoding_violations  # noqa: E402
 from validate_sh_encoding import find_sh_encoding_violations  # noqa: E402
+from validate_bridge_manifests import find_manifest_violations  # noqa: E402
+from validate_data_boundaries import (  # noqa: E402
+    find_cross_module_fk_violations,
+    find_isolated_auth_fk_violations,
+)
+from security.checkers.object_permissions import find_raw_model_viewsets  # noqa: E402
+from validate_logout_storm_guards import find_logout_storm_guard_violations  # noqa: E402
 API_DIR = PROJECT_ROOT / 'core' / 'api'
 CLIENT_SRC = PROJECT_ROOT / 'core' / 'client' / 'src'
+CORE_DIR = PROJECT_ROOT / 'core'
 CORE_CLIENT = PROJECT_ROOT / 'core' / 'client'
 CORE_API_SRC = PROJECT_ROOT / 'core' / 'api' / 'src'
+CORE_DEPLOYMENT = PROJECT_ROOT / 'core' / 'deployment'
+CURSOR_RULES_DIR = PROJECT_ROOT / '.cursor' / 'rules'
 MODULES_DIR = PROJECT_ROOT / 'modules'
+
+HARDCODED_MODULE_SCAN_SUFFIXES = (
+    '.py',
+    '.js',
+    '.vue',
+    '.scss',
+    '.ts',
+    '.ps1',
+    '.sh',
+    '.cmd',
+    '.md',
+    '.mdc',
+    '.yaml',
+    '.yml',
+    '.json',
+    '.toml',
+    '.conf',
+    '.template',
+    '.txt',
+    '.html',
+)
+
+HARDCODED_MODULE_SKIP_DIR_NAMES = frozenset({
+    'node_modules',
+    'dist',
+    '__pycache__',
+    '.git',
+    'coverage',
+    '.vite',
+    'cache',
+})
 
 CONSOLE_ERROR_ALLOWLIST = {
     CLIENT_SRC / 'js' / 'utils' / 'logError.js',
@@ -68,8 +113,17 @@ HARDCODED_MODULE_ALLOWLIST_SUFFIXES = (
     'validate_core_rules.py',
     'validate_module_isolation.py',
     'validate_bridge_contracts.py',
+    'validate_bridge_manifests.py',
+    'validate_data_boundaries.py',
+    'inventory_module_data.py',
     'module_deps.py',
     'sharedGlobs.generated.js',
+)
+
+HARDCODED_MODULE_ALLOWLIST_NAME_SUFFIXES = (
+    '.generated.yml',
+    '.generated.yaml',
+    '.generated.js',
 )
 
 HARDCODED_MODULE_ALLOWLIST_REL = {
@@ -88,10 +142,32 @@ HARDCODED_MODULE_LINE_ALLOWLIST = (
     re.compile(r'modules\.'),
     re.compile(r'module_source\s*='),
     re.compile(r'MODULE_SOURCE\s*='),
-    re.compile(r"\.get\('workers'"),
+    # Служебные ключи YAML/JSON/рецептов, совпадающие с именами модулей workers/tasks
+    re.compile(r"\.get\(['\"](?:workers|tasks)['\"]"),
+    re.compile(r"['\"]tasks['\"]:\s*(?:logging|\[)"),
+    re.compile(
+        r"['\"]workers['\"]:\s*['\"](?:install|start|stop|restart|status)-workers['\"]"
+    ),
+    re.compile(r"['\"]beat['\"],\s*['\"]workers['\"]"),
+    re.compile(r'RootKey\s+["\']workers["\']'),
     re.compile(r'__pycache__'),
-    re.compile(r"'tasks':\s*logging"),
 )
+
+# Короткие/служебные токены: ловят Celery, vscode, generic-слова.
+# Для них — только quoted literals; для остальных — ещё \bname\b (в т.ч. комментарии).
+AMBIGUOUS_MODULE_NAME_TOKENS = frozenset({
+    'crm',
+    'lms',
+    'projects',
+    'students',
+    'tasks',
+    'workers',
+})
+
+# Официальный scaffold модулей — имя допустимо в правилах/доках ядра как эталон.
+PLATFORM_MODULE_DOC_ALLOWLIST = frozenset({
+    'module_template',
+})
 
 CLIENT_MODULE_LITERAL_ALLOWLIST = (
     'core/client/src/modules/core/ModuleLoader.js',
@@ -175,8 +251,7 @@ def _iter_files(root: Path, suffix: str) -> list[Path]:
         return []
     files: list[Path] = []
     for path in root.rglob(f'*{suffix}'):
-        parts = set(path.parts)
-        if 'node_modules' in parts or 'dist' in parts or '__pycache__' in parts:
+        if HARDCODED_MODULE_SKIP_DIR_NAMES.intersection(path.parts):
             continue
         files.append(path)
     return files
@@ -192,7 +267,21 @@ def _is_hardcoded_module_allowlisted(path: Path) -> bool:
         return True
     if any(part == 'migrations' for part in path.parts):
         return True
-    return path.name in HARDCODED_MODULE_ALLOWLIST_SUFFIXES
+    if path.name in HARDCODED_MODULE_ALLOWLIST_SUFFIXES:
+        return True
+    name_lower = path.name.lower()
+    if any(name_lower.endswith(suffix) for suffix in HARDCODED_MODULE_ALLOWLIST_NAME_SUFFIXES):
+        return True
+    return False
+
+
+def _should_skip_hardcoded_module_path(rel: str) -> bool:
+    """Пропуск тестов и lock-файлов — не runtime/доки ядра."""
+    if rel.startswith('core/deployment/tests/') or '/lib/test/' in rel:
+        return True
+    if rel.endswith(('.lock', 'package-lock.json', 'poetry.lock')):
+        return True
+    return False
 
 
 def load_installed_module_names() -> list[str]:
@@ -211,31 +300,68 @@ def load_installed_module_names() -> list[str]:
 
 
 def check_hardcoded_module_names() -> list[str]:
+    """Запрет имён установленных модулей во всём ядре и правилах Cursor.
+
+    Область: весь ``core/`` и ``.cursor/rules/``.
+    Quoted literals ('name' / "name") — для всех установленных модулей.
+    Word-boundary name — для недвусмысленных имён (не AMBIGUOUS_MODULE_NAME_TOKENS).
+    Комментарии (#, //, /* */, JSDoc *), docstring и markdown не исключаются.
+    """
     module_names = load_installed_module_names()
     if not module_names:
         return []
 
-    literal_pattern = re.compile(
-        r"(['\"])(" + "|".join(re.escape(name) for name in module_names) + r")\1"
+    scannable_names = [
+        name
+        for name in module_names
+        if name not in PLATFORM_MODULE_DOC_ALLOWLIST
+    ]
+    if not scannable_names:
+        return []
+
+    quoted_pattern = re.compile(
+        r"(['\"])(" + "|".join(re.escape(name) for name in scannable_names) + r")\1"
     )
-    scan_roots = [CORE_API_SRC, CLIENT_SRC, CORE_CLIENT / 'vite.config.js']
+    distinctive = [
+        name for name in scannable_names if name not in AMBIGUOUS_MODULE_NAME_TOKENS
+    ]
+    word_pattern = None
+    if distinctive:
+        word_pattern = re.compile(
+            r'\b('
+            + '|'.join(
+                re.escape(name) for name in sorted(distinctive, key=len, reverse=True)
+            )
+            + r')\b'
+        )
+    scan_roots = [
+        CORE_DIR,
+        CURSOR_RULES_DIR,
+    ]
     violations: list[str] = []
     seen: set[str] = set()
 
     for root in scan_roots:
+        if not root.exists():
+            continue
         if root.is_file():
             candidates = [root]
         else:
             candidates = []
-            for suffix in ('.py', '.js', '.vue', '.scss', '.ts'):
+            for suffix in HARDCODED_MODULE_SCAN_SUFFIXES:
                 candidates.extend(_iter_files(root, suffix))
 
         for path in candidates:
-            rel = _relative_posix(path)
+            try:
+                rel = _relative_posix(path)
+            except ValueError:
+                continue
             if rel in seen:
                 continue
             seen.add(rel)
             if _is_hardcoded_module_allowlisted(path):
+                continue
+            if _should_skip_hardcoded_module_path(rel):
                 continue
             try:
                 lines = path.read_text(encoding='utf-8').splitlines()
@@ -243,18 +369,23 @@ def check_hardcoded_module_names() -> list[str]:
                 continue
             for line_no, line in enumerate(lines, start=1):
                 stripped = line.strip()
-                if not stripped or stripped.startswith('#') or stripped.startswith('//'):
+                if not stripped:
                     continue
                 if any(pattern.search(line) for pattern in HARDCODED_MODULE_LINE_ALLOWLIST):
                     continue
-                match = literal_pattern.search(line)
-                if match:
+                match = quoted_pattern.search(line)
+                name = match.group(2) if match else None
+                if name is None and word_pattern is not None:
+                    word_match = word_pattern.search(line)
+                    if word_match:
+                        name = word_match.group(1)
+                if name:
                     violations.append(
                         t(
                             'core_rules_hardcoded_module_name',
                             rel=rel,
                             line_no=line_no,
-                            name=match.group(2),
+                            name=name,
                         )
                     )
     return violations
@@ -335,7 +466,7 @@ def check_client_hardcoded_module_paths() -> list[str]:
                 continue
             for line_no, line in enumerate(lines, start=1):
                 stripped = line.strip()
-                if not stripped or stripped.startswith('//') or stripped.startswith('*'):
+                if not stripped:
                     continue
                 match = path_pattern.search(line)
                 if match:
@@ -496,8 +627,51 @@ def check_python_file_integrity() -> list[str]:
     return violations
 
 
-def main() -> int:
-    all_errors: list[str] = []
+def check_raw_model_viewsets() -> list[str]:
+    """Сырой ModelViewSet ядра без object-scope или admin-маркера."""
+    return [
+        t('core_rules_raw_viewset', name=name)
+        for name in find_raw_model_viewsets(CORE_API_SRC)
+    ]
+
+
+REQUIRED_MODULE_DOC_FILES = ('README.md', 'AGENTS.md')
+
+
+def _module_dir_is_installed(entry: Path) -> bool:
+    """Каталог установлен, если есть регистрация API или клиент."""
+    if (entry / 'api' / 'apps.py').is_file():
+        return True
+    client = entry / 'client'
+    return client.is_dir() and any(client.iterdir())
+
+
+def check_module_docs() -> tuple[list[str], list[str]]:
+    """README.md и AGENTS.md обязательны у установленного модуля.
+
+    Пустой checkout (нет ``api/apps.py`` и нет ``client/``) — skip, не ошибка.
+    Имена модулей в сообщениях берутся с диска, в исходнике их нет.
+    """
+    violations: list[str] = []
+    skipped: list[str] = []
+    if not MODULES_DIR.is_dir():
+        return violations, skipped
+    for entry in sorted(MODULES_DIR.iterdir(), key=lambda p: p.name):
+        if not entry.is_dir():
+            continue
+        if entry.name.startswith('.') or entry.name == '__pycache__':
+            continue
+        rel_dir = f'modules/{entry.name}'
+        if not _module_dir_is_installed(entry):
+            skipped.append(rel_dir)
+            continue
+        for filename in REQUIRED_MODULE_DOC_FILES:
+            if not (entry / filename).is_file():
+                violations.append(
+                    t('core_rules_module_docs_missing', rel=f'{rel_dir}/{filename}')
+                )
+    return violations, skipped
+
 
 def main() -> int:
     all_errors: list[str] = []
@@ -514,6 +688,29 @@ def main() -> int:
 
     _section('core_rules_heading_bridge')
     all_errors.extend(run_bridge_contracts_check())
+
+    _section('core_rules_heading_bridge_manifests')
+    manifest_violations = find_manifest_violations()
+    if manifest_violations:
+        all_errors.extend(manifest_violations)
+        for item in manifest_violations:
+            print(format_console('error', t('core_rules_bridge_manifest_error', item=item)))
+    else:
+        print(format_console('ok', t('core_rules_bridge_manifests_ok')))
+
+    _section('core_rules_heading_data_boundaries')
+    boundary_violations = [
+        msg for _rel, msg in (
+            *find_cross_module_fk_violations(),
+            *find_isolated_auth_fk_violations(),
+        )
+    ]
+    if boundary_violations:
+        all_errors.extend(boundary_violations)
+        for item in boundary_violations:
+            print(format_console('error', item))
+    else:
+        print(format_console('ok', t('core_rules_data_boundaries_ok')))
 
     _section('core_rules_heading_hardcoded_names')
     hardcoded_violations = check_hardcoded_module_names()
@@ -574,6 +771,26 @@ def main() -> int:
     else:
         print(format_console('ok', t('core_rules_native_select_ok')))
 
+    _section('core_rules_heading_object_perms')
+    raw_viewset_violations = check_raw_model_viewsets()
+    if raw_viewset_violations:
+        all_errors.extend(raw_viewset_violations)
+        for item in raw_viewset_violations:
+            print(format_console('error', item))
+    else:
+        print(format_console('ok', t('core_rules_object_perms_ok')))
+
+    _section('core_rules_heading_module_docs')
+    docs_violations, docs_skipped = check_module_docs()
+    for rel_dir in docs_skipped:
+        print(format_console('skip', t('core_rules_module_docs_skip', rel=rel_dir)))
+    if docs_violations:
+        all_errors.extend(docs_violations)
+        for item in docs_violations:
+            print(format_console('error', item))
+    else:
+        print(format_console('ok', t('core_rules_module_docs_ok')))
+
     _section('core_rules_heading_modules_import')
     import_violations = check_modules_imports_in_core()
     if import_violations:
@@ -613,6 +830,16 @@ def main() -> int:
             print(format_console('error', msg))
     else:
         print(format_console('ok', t('core_rules_sh_ok')))
+
+    _section('core_rules_heading_logout_storm')
+    logout_storm_violations = find_logout_storm_guard_violations()
+    if logout_storm_violations:
+        for rel, marker in logout_storm_violations:
+            msg = t('core_rules_logout_storm_missing', rel=rel, marker=marker)
+            all_errors.append(msg)
+            print(format_console('error', msg))
+    else:
+        print(format_console('ok', t('core_rules_logout_storm_ok')))
 
     if all_errors:
         print()

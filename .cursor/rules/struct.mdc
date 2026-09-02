@@ -5,85 +5,32 @@ alwaysApply: true
 
 # Архитектура ERGO MS
 
-Веб-приложение из двух частей:
-- **Сервер** — Django, каталог `core/api/`
-- **Клиент** — Vue, каталог `core/client/`
+Сервер — Django (`core/api/`), клиент — Vue (`core/client/`). Ядро: `api/`, `client/`, `media_api/` (git-submodule) и `deployment/`. Модули — `modules/<имя>/` (submodule, `api/` и/или `client/`). Community-тексты — `core/.github`. После clone: `git submodule update --init --recursive`.
 
-## Ядро и модули
+Связь модуль↔модуль и ядро↔домен модуля — только **ModuleBridge** и hook-файлы с фиксированным именем, не прямой import. Каталог hook’ов — [`modules.mdc`](modules.mdc). Вынос процесса — [`modularization.mdc`](modularization.mdc) (по умолчанию монолит). Режимы в корневом `.env`, детали во `env/` — [`env-examples.mdc`](env-examples.mdc).
 
-**Ядро** (`core/`) — `api/`, `client/`, `media_api/`, `deployment/`. Части `core/api`, `core/client`, `core/media_api` — **git-submodule** (см. `.gitmodules`), как и `modules/<имя>/`.
-
-**Модули** (`modules/<имя>/`) — отдельные доменные блоки. Подключаются как git-submodule. У модуля может быть сервер (`api/`), клиент (`client/`) или оба.
-
-После `git clone` выполните `git submodule update --init --recursive`, иначе каталоги ядра и модулей могут быть пустыми.
-
-Связь «модуль ↔ модуль» — только через мост (см. [`modules.mdc`](modules.mdc)), не через прямые импорты.
-
-### Импорты из `modules/` в ядре
-
-Ядро **не импортирует бизнес-код модулей** (models, views, serializers, services, tasks). Доменная логика модуля доступна ядру только через **ModuleBridge** — см. [`modules.mdc`](modules.mdc).
-
-**Допустимо** — инфраструктура ядра, которая связывает **элемент ядра с элементом ядра** и для этого подключает модуль как источник деклараций или точку регистрации. Модуль не вызывается как зависимость бизнес-сценария; ядро сканирует, загружает или агрегирует заранее описанные hook-файлы.
-
-| Область ядра | Что подключает | Эталон |
-|--------------|----------------|--------|
-| Регистрация Django-приложений | `apps.py` модулей | [`auto_config.py`](../../core/api/src/core/utils/auto_api/auto_config.py) |
-| Каталог прав ADP | `permission_catalog.py` | [`permission_catalog.py`](../../core/api/src/core/cms/adp/services/permission_catalog.py) |
-| Celery / beat | `celery_config.py` | [`celery/manager.py`](../../core/api/src/core/utils/celery/manager.py) |
-| Маршруты, endpoints, integrations клиента | `client/js/*` | [`ModuleLoader.js`](../../core/client/src/modules/core/ModuleLoader.js) |
-| Дефолты модульной темы | `client/js/theme-defaults.js` | [`ThemeDefaultsManager.js`](../../core/client/src/modules/themes/ThemeDefaultsManager.js) |
-| Каталоги локализации клиента | `client/js/locales.js` | [`LocaleManager.js`](../../core/client/src/modules/i18n/LocaleManager.js) |
-| Route guards клиента | `routeGuard.js` | [`RouteGuardsManager.js`](../../core/client/src/modules/routing/RouteGuardsManager.js) |
-| LayoutPlugin / offcanvas | `layout.plugin_registry` в `integrations.js` | [`layoutPluginRegistry.js`](../../core/client/src/integrations/layoutPluginRegistry.js) |
-| Session-scoped контекст сессии | `session_scope.module_context` | [`sessionScopedModuleContext.js`](../../core/client/src/integrations/sessionScopedModuleContext.js) |
-| Восстановление session-claims при логине | `session.restore_claims` (op) | [`views_auth.py`](../../core/api/src/core/cms/adp/views_auth.py) ← `bridge.call`; провайдер — модуль |
-| Восстановление меню CMS | миграции меню модуля | [`restore_menu.py`](../../core/api/src/core/cms/management/commands/restore_menu.py) |
-| resource-usage (роли процессов) | `process_roles.yaml` | [`process_roles_loader.py`](../../core/deployment/scripts/process_roles_loader.py), [`process-roles.mdc`](process-roles.mdc) |
-| install/uninstall-services / тесты (демоны модулей) | `host_lifecycle.yaml` | [`host_lifecycle_loader.py`](../../core/deployment/scripts/host_lifecycle_loader.py), [`host-lifecycle.mdc`](host-lifecycle.mdc) |
-| Portable-пакеты (`virtual_env/packages`) | `packages.yaml` | [`core/deployment/packages/`](../../core/deployment/packages/), [`packages.mdc`](packages.mdc) |
-| Задачи Run Task (IDE) | `vscode.tasks.yaml` | расширение [`ergo-ms-tasks`](../../.vscode/extensions/tasks), [`module-vscode-tasks.mdc`](module-vscode-tasks.mdc) |
-| setup-full / start-all (модульные install/start) | `vscode.tasks.yaml` (`include_in`) | [`module_tasks_loader.py`](../../core/deployment/scripts/module_tasks_loader.py), [`module-vscode-tasks.mdc`](module-vscode-tasks.mdc) |
-
-Типичный паттерн: `importlib.import_module(...)` или `import.meta.glob('modules/*/...')` по **фиксированному имени файла** из списка установленных модулей — не произвольный import доменного класса.
-
-```python
-# GOOD — ядро ADP агрегирует декларации прав из hook-файла модуля
-mod = importlib.import_module(f'{app_path}.permission_catalog')
-catalog = getattr(mod, 'PERMISSION_CATALOG', None)
-
-# BAD — ядро тянет доменную модель модуля в view или service
-from modules.<name>.api.models import SomeEntity
-entity = SomeEntity.objects.get(pk=entity_id)
-```
-
-```javascript
-// GOOD — ModuleLoader подхватывает routes.js всех модулей
-import.meta.glob('../../../../../modules/*/client/js/routes.js')
-
-// BAD — прямой import компонента или API-модуля в бизнес-коде ядра
-import EntityList from '../../../../modules/<name>/client/pages/EntityList.vue'
-```
-
-**Запрещено в ядре:**
+## Запрещено в ядре
 
 - `from modules.<имя>.api...` models / views / serializers / services / tasks в бизнес-логике
-- **Hardcoded имена модулей** в runtime-коде (`'<name>'`, палитры модуля в Python и т.п.) — только generic hook discovery и ModuleBridge; проверка: `ergoms core-rules-check`
-- Прямые static import из submodule в клиентских страницах и composables ядра (кроме инфраструктуры загрузки: `ModuleLoader`, glob в `LayoutMenu.vue`)
-- Обход ModuleBridge ради «удобного» доступа к данным или операциям модуля
+- Hardcoded имена модулей в `core/` и `.cursor/rules/` (даже в комментариях) — `ergoms core-rules-check`
+- Static import страниц или store модуля в клиенте ядра (кроме `ModuleLoader` / glob загрузки)
+- Обход моста ради доступа к домену модуля
 
-Подробности по модулям — в [`modules.mdc`](modules.mdc). Боковое меню — [`menu.mdc`](menu.mdc). Realtime — [`realtime.mdc`](realtime.mdc). Redis, nginx, TLS — [`deployment-infra.mdc`](deployment-infra.mdc). Docker Compose — [`docker.mdc`](docker.mdc). Нюансы развёртывания — в [`core/deployment/logic.md`](../../core/deployment/logic.md) и [`.docs/architecture.md`](../../.docs/architecture.md).
+```python
+# GOOD — ядро читает hook-файл
+mod = importlib.import_module(f'{app_path}.permission_catalog')
+
+# BAD
+from modules.<name>.api.models import SomeEntity
+```
 
 ## Связанные правила
 
 | Тема | Файл |
 |------|------|
-| Изоляция ядра от домена модулей | [`core-module-isolation.mdc`](core-module-isolation.mdc) |
-| Модули (детали) | [`modules.mdc`](modules.mdc) |
-| Django, DRF | [`django.mdc`](django.mdc) |
-| Безопасность | [`security.mdc`](security.mdc), [`security-details.mdc`](security-details.mdc) |
+| Изоляция | [`core-module-isolation.mdc`](core-module-isolation.mdc) |
+| Модули, hook’и, мост | [`modules.mdc`](modules.mdc) |
+| Вынос в сервис | [`modularization.mdc`](modularization.mdc) |
+| `.env` / `env/` | [`env-examples.mdc`](env-examples.mdc) |
 | ergoms | [`no-direct-manage-py.mdc`](no-direct-manage-py.mdc) |
-| Структура каталогов | [`.docs/structure.md`](../../.docs/structure.md) |
-| Боковое меню | [`menu.mdc`](menu.mdc) |
-| Realtime | [`realtime.mdc`](realtime.mdc) |
-| Redis, nginx, TLS | [`deployment-infra.mdc`](deployment-infra.mdc) |
-| Docker Compose | [`docker.mdc`](docker.mdc) |
+| Безопасность | [`security.mdc`](security.mdc) |

@@ -1,0 +1,77 @@
+---
+description: Системные тесты ERGO MS — ergoms system-test, изоляция с нуля, Docker, worktree, службы ОС, Playwright
+globs:
+  - "core/deployment/**"
+  - "core/client/e2e/**"
+alwaysApply: false
+---
+
+# Системные тесты
+
+После правок развёртывания, команд ergoms, служб ОС, docker/nginx, security стека или клиентского e2e **пиши и гоняй** `ergoms system-test`. Нельзя писать «система работает», пока не прогнан минимум ниже.
+
+Каркас: [`core/deployment/system_test/`](../../core/deployment/system_test/). Команда: [`run_system_test.py`](../../core/deployment/scripts/run_system_test.py).
+
+## Кратко
+
+- Один цикл: provision → start → пачка кейсов → teardown. Следующий spec — новый цикл.
+- Изоляция: throwaway `.env`, порты, префикс служб `ERGO_SERVICE_PREFIX=ergo_st_*`. Рабочие `.env` и `ergo_ms_*` не трогать.
+- Docker на Windows проверяет Linux в контейнере. Нативный `setup-full` / NSSM — только `--launch host` / `--suite os-services` на самой Windows.
+- Без прав администратора / sudo сьют `os-services` даёт SKIP, не тихий pass.
+
+## Обязательно
+
+Минимум после правок развёртывания:
+
+```text
+ergoms system-test --suite unit
+ergoms system-test --suite install --launch docker
+ergoms system-test --suite install --launch host
+```
+
+| Что менял | Ещё прогони |
+|---|---|
+| Службы ОС, `service_names`, NSSM, systemd | `--suite os-services` |
+| Логин, меню, профиль, клиентский e2e | `--suite browser` |
+| Сценарии host/docker, compose, nginx | `--suite scenarios` |
+| Контроли безопасности стека | `--suite security` |
+| Новая команда, которая стартует сервис | кейс в `system_test/cases/` + `--suite commands` |
+
+`--suite all` — только по явной просьбе или перед релизом.
+
+Новая команда, которая стартует процесс или меняет развёртывание, **обязана** получить `SystemCase`. Новый spec — строка в [`scenario_test/matrix.py`](../../core/deployment/scenario_test/matrix.py) и вызов через `ScenarioSpecCase`.
+
+## Запрещено
+
+- Утверждать, что установка с нуля работает, не прогнав `--suite install`.
+- Ставить NSSM/systemd на рабочий префикс `ergo_ms` из теста.
+- Чистить рабочий `virtual_env` в системном тесте (как старый `install_test.ps1`).
+- Подставлять JWT в `localStorage` для Playwright — только форма логина и пароль из provision.
+- Имена установленных модулей в кейсах ядра — только `<name>`.
+
+## Базовый пример
+
+```python
+# GOOD — кейс знает домен и окружения
+class CommandsSmokeCase(SystemCase):
+    name = 'commands_smoke'
+    domain = 'commands'
+    def run(self, env: IsolatedEnvironment) -> CaseResult:
+        result = env.run_ergoms('help')
+        ...
+```
+
+```text
+# BAD — «проверил руками на своём .env»
+# BAD — install-services без ERGO_SERVICE_PREFIX
+```
+
+## Связанные правила
+
+| Тема | Файл |
+|---|---|
+| Django-тесты модулей | [`testing.mdc`](testing.mdc) |
+| Команды ergoms | [`ergoms-commands.mdc`](ergoms-commands.mdc) |
+| Windows / Linux | [`oc.mdc`](oc.mdc) |
+| Docker | [`docker.mdc`](docker.mdc) |
+| Безопасность | [`security.mdc`](security.mdc) |

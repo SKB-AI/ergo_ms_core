@@ -45,18 +45,26 @@ def read_toml(path: Path) -> dict:
 
 def extract_poetry_dependencies(data: dict) -> set[str]:
     deps: set[str] = set()
-    poetry_deps = (
-        data.get("tool", {})
-        .get("poetry", {})
-        .get("dependencies", {})
-    )
-    if not isinstance(poetry_deps, dict):
-        return deps
+    poetry = data.get("tool", {}).get("poetry", {})
+    poetry_deps = poetry.get("dependencies", {})
+    if isinstance(poetry_deps, dict):
+        for dep_name in poetry_deps:
+            normalized = normalize_name(dep_name)
+            if normalized and normalized != "python":
+                deps.add(normalized)
 
-    for dep_name in poetry_deps:
-        normalized = normalize_name(dep_name)
-        if normalized and normalized != "python":
-            deps.add(normalized)
+    groups = poetry.get("group", {})
+    if isinstance(groups, dict):
+        for group in groups.values():
+            if not isinstance(group, dict):
+                continue
+            group_deps = group.get("dependencies", {})
+            if not isinstance(group_deps, dict):
+                continue
+            for dep_name in group_deps:
+                normalized = normalize_name(dep_name)
+                if normalized and normalized != "python":
+                    deps.add(normalized)
     return deps
 
 

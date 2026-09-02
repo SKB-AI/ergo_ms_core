@@ -242,7 +242,10 @@ def _database_has_user_tables(
         sql=(
             "SELECT COUNT(*) FROM pg_catalog.pg_class c "
             "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
-            "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm')"
+            "WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') "
+            "AND n.nspname NOT LIKE 'pg_toast%' "
+            "AND n.nspname NOT LIKE 'pg_temp_%' "
+            "AND c.relkind IN ('r', 'p', 'v', 'm')"
         ),
     )
     try:
@@ -678,7 +681,8 @@ def migrate(
                 db_user=db_user,
                 db_password=db_password,
             )
-            if target_busy and force:
+            if target_exists:
+                # install-postgres заранее создаёт schema core / pg_trgm — чистый restore иначе падает.
                 _recreate_database(
                     root,
                     host=target_host,
@@ -699,13 +703,25 @@ def migrate(
                     '-d', db_name,
                     '--no-owner',
                     '--no-acl',
-                    '--exit-on-error',
                     str(dump_path),
                 ],
                 env=_pg_env(admin_user, admin_password, target_host),
             )
             if restore.returncode != 0:
-                _tool_failed(restore, f'pg_restore [{section_name}]')
+                loaded = _database_has_user_tables(
+                    root,
+                    host=target_host,
+                    port=target_port,
+                    user=admin_user,
+                    password=admin_password,
+                    database=db_name,
+                )
+                if not loaded:
+                    _tool_failed(restore, f'pg_restore [{section_name}]')
+                detail = (restore.stderr or restore.stdout or '').strip()
+                if detail:
+                    print(detail, file=sys.stderr)
+                _log('warning', t('postgres_tool_failed', label=f'pg_restore [{section_name}]', code=restore.returncode))
             _log(
                 'ok',
                 t(

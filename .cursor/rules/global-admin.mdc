@@ -23,6 +23,8 @@ alwaysApply: false
 
 `can_manage_users_as_global_admin` и `is_admin` делегируют в `_is_global_admin()`: `is_superuser=True` **или** активная ADP-роль «Администратор» (`role_type == 'admin'`).
 
+На процессе модуля (`MODULE_AUTH_MODE=jwt_claims`) роль читается из JWT: ядро кладёт `is_admin` при логине, refresh и scoped-перевыпуске (`attach_platform_auth_claims`). Не спрашивай роль повторно из `cms_adp_*` модуля и не считай отказ HTTP-моста «обычным пользователем», если в токене уже есть `is_admin=true`.
+
 ```python
 # ❌ BAD — разная логика для суперюзера и назначенного админа
 if user.is_superuser:

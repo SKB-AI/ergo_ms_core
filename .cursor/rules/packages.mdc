@@ -19,11 +19,11 @@ alwaysApply: false
 
 1. Новый portable-бинарник модуля — объяви в `packages.yaml`, не копируй download/extract в Django management.
 2. `kind: archive` — URL/marker/платформа в YAML; общий installer ядра.
-3. `kind: custom` — скрипт относительно корня модуля или `core/deployment`; запуск **subprocess**, без `import modules.<name>.api`.
+3. `kind: custom` — скрипт относительно корня модуля или `core/deployment`; запуск **subprocess**, без `import modules.<name>.api`. Если после копирования файлов нужен шаг в уже существующей БД (`CREATE EXTENSION` и т.п.), поставь `always_run: true` и сделай installer идемпотентным: маркер не должен отменять этот шаг.
 4. Пути только через `project_layout` / `package_dir`.
 5. Конфликт имён пакетов (ядро ↔ модуль) — ошибка при discovery, не молчаливое перекрытие.
 6. Службы ОС (NSSM/systemd, конфиг redis/nginx) — отдельно от `package-install` (lifecycle `install-redis` и т.п.).
-7. Vendor git-репозитории (например код Silero для torch.hub) допустимы как `kind: custom` в `packages/`; **веса моделей** — в `trained_models/` / `resources/`, не как отдельный portable-пакет.
+7. Vendor git-репозитории (например код Silero для torch.hub) допустимы как `kind: custom` в `packages/`; **веса моделей** — в `trained_models/` / `resources/`, не как отдельный portable-пакет. Снимки Hugging Face `org/name` — [`huggingface-models.mdc`](huggingface-models.mdc), не этот реестр.
 
 ## Запрещено
 
@@ -73,6 +73,7 @@ packages:
     installer: deployment/install_<pkg>.py   # relative to module root
     pass_root: true                          # false для lifecycle/runner.py
     installer_args: []
+    always_run: false                        # true — вызывать installer даже при маркере (CREATE EXTENSION и т.п.)
     marker_windows: …
     marker_linux: …
     extra_dirs: []                           # удаляются при package-uninstall --purge-extra

@@ -34,6 +34,11 @@ needs_install() {
     done
   fi
 
+  # Маркер и mtime совпали, но пакеты могли пропасть из тома node_modules.
+  if ! node /app/core/deployment/scripts/sync-module-npm-deps.js --check >/dev/null 2>&1; then
+    return 0
+  fi
+
   return 1
 }
 

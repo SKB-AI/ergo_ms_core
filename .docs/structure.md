@@ -4,7 +4,7 @@
 
 ## Основные каталоги
 
-**`core/api/`**, **`core/client/`**, **`core/media_api/`** — части ядра как **git-submodule** (отдельные репозитории в `.gitmodules`). **`core/deployment/`** — в корневом репозитории: скрипты установки и запуска, файл `commands.conf` с командами ergoms.
+**`core/api/`**, **`core/client/`**, **`core/media_api/`** — части ядра как **git-submodule** (отдельные репозитории в `.gitmodules`). **`core/.github/`** — submodule community-репозитория организации (CONTRIBUTING, SECURITY, шаблоны issues/PR); инициализируется вместе с ядром при `setup-full` и `ergoms update-submodules`. **`core/deployment/`** — в корневом репозитории: скрипты установки и запуска, файл `commands.conf` с командами ergoms.
 
 **`modules/<имя>/`** — доменные модули. Каждый модуль — submodule со своим git-репозиторием; внутри типично пары `api/` и `client/`. Каталог точек расширения — [modules.md](modules.md).
 

@@ -14,10 +14,12 @@ if str(_DEPLOYMENT_DIR) not in sys.path:
 from cli_locale import t  # noqa: E402
 
 from lifecycle.context import DeploymentTarget
+from lifecycle.pipeline import ParallelStepGroup
 from lifecycle.steps.base import DeploymentStep
 from lifecycle.steps.common_steps import (
     ClientBuildStep,
     CollectStaticStep,
+    EnsureApiSecretStep,
     MigrateStep,
     NpmInstallStep,
     PythonInstallStep,
@@ -43,6 +45,7 @@ from lifecycle.steps.docker_steps import (
 from lifecycle.steps.host_steps import (
     ConfigScaffoldStep,
     CreateVenvStep,
+    RestoreArtifactOwnershipStep,
     EnsurePortableNodejsStep,
     EnsurePortablePythonStep,
     GitSubmoduleUpdateStep,
@@ -52,14 +55,22 @@ from lifecycle.steps.host_steps import (
     UpdateModuleSubmodulesStep,
 )
 from lifecycle.steps.infra_steps import (  # noqa: E402
+    EnsureMeilisearchOsServiceStep,
+    EnsureMeilisearchStep,
     EnsureNginxOsServiceStep,
     EnsureNginxStep,
+    EnsurePostgresOsServiceStep,
     EnsureRedisOsServiceStep,
     EnsureRedisStep,
     InfraOperationStep,
+    StopSetupStartedInfraStep,
 )
 from lifecycle.steps.host_lifecycle_steps import ModuleHostServicesStep
-from lifecycle.steps.module_tasks_steps import ModuleSetupTasksStep
+from lifecycle.steps.huggingface_steps import PullHuggingfaceModelsStep
+from lifecycle.steps.module_tasks_steps import (
+    ModuleSetupTasksAfterMigrateStep,
+    ModuleSetupTasksStep,
+)
 from lifecycle.steps.postgres_steps import EnsurePostgresStep
 from lifecycle.steps.service_steps import ServiceOperationStep
 
@@ -92,23 +103,39 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
             'setup-full',
             (
                 HostExecutionPolicyStep(),
-                GitSubmoduleUpdateStep(),
+                GitSubmoduleUpdateStep(remote=False),
                 ConfigScaffoldStep(),
-                EnsurePortablePythonStep(),
-                EnsurePortableNodejsStep(),
+                RestoreArtifactOwnershipStep(),
+                EnsureApiSecretStep(),
+                ParallelStepGroup(
+                    EnsurePortablePythonStep(),
+                    EnsurePortableNodejsStep(),
+                    name='portable_runtimes',
+                ),
                 CreateVenvStep(),
                 PoetryInstallStep(),
                 HostCliInstallStep(),
-                PythonInstallStep(),
-                NpmInstallStep(),
-                ClientBuildStep(),
+                ParallelStepGroup(
+                    PythonInstallStep(),
+                    NpmInstallStep(),
+                    name='python_and_npm',
+                ),
+                PullHuggingfaceModelsStep(),
                 EnsurePostgresStep(),
+                EnsurePostgresOsServiceStep(),
                 EnsureRedisStep(),
+                EnsureMeilisearchStep(),
                 EnsureNginxStep(),
-                MigrateStep(),
-                WarmupCachesStep(),
-                CollectStaticStep(),
+                ClientBuildStep(),
+                # До migrate: модульные portable (pgvector и т.п.) должны быть в БД до CREATE EXTENSION.
                 ModuleSetupTasksStep(),
+                MigrateStep(),
+                # После migrate: задачи, которым нужна схема БД (RAG sync и т.п.).
+                ModuleSetupTasksAfterMigrateStep(),
+                WarmupCachesStep(if_needed=True),
+                CollectStaticStep(),
+                # finally: остановить nginx/redis/модульные демоны и при ошибке посередине.
+                StopSetupStartedInfraStep(),
             ),
             description=t('recipe_setup_full'),
         ),
@@ -124,19 +151,34 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
         ),
         RecipeSpec(
             'install-deps',
-            (PythonInstallStep(), NpmInstallStep(), MigrateStep(), WarmupCachesStep()),
+            (
+                ParallelStepGroup(
+                    PythonInstallStep(),
+                    NpmInstallStep(),
+                    name='python_and_npm',
+                ),
+                MigrateStep(),
+                WarmupCachesStep(),
+            ),
             description=t('recipe_install_deps'),
         ),
         RecipeSpec(
             'python-install',
-            (PythonInstallStep(),),
+            (
+                CreateVenvStep(),
+                PoetryInstallStep(),
+                PythonInstallStep(),
+            ),
             description=t('recipe_python_install'),
         ),
         RecipeSpec(
             'setup-application',
             (
-                PythonInstallStep(),
-                NpmInstallStep(),
+                ParallelStepGroup(
+                    PythonInstallStep(),
+                    NpmInstallStep(),
+                    name='python_and_npm',
+                ),
                 ClientBuildStep(),
                 MigrateStep(),
                 WarmupCachesStep(),
@@ -164,8 +206,11 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
             'deploy-all',
             (
                 _deploy_all_submodules(),
-                PythonInstallStep(),
-                NpmInstallStep(),
+                ParallelStepGroup(
+                    PythonInstallStep(),
+                    NpmInstallStep(),
+                    name='python_and_npm',
+                ),
                 MigrateStep(),
                 WarmupCachesStep(),
                 CollectStaticStep(),
@@ -195,6 +240,7 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
             (
                 ClearSetupMarkerStep(),
                 DockerModulesIgnoreStep(),
+                EnsureApiSecretStep(),
                 DockerBuildStep(skip_if_present=True),
                 GenerateWorkersComposeStep(),
                 ComposeArtifactsStep(),
@@ -214,6 +260,7 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
         RecipeSpec(
             'docker-bootstrap',
             (
+                EnsureApiSecretStep(),
                 DockerStopBeforeBootstrapStep(),
                 DockerBootstrapInfraStep(),
                 PythonInstallStep(),
@@ -249,6 +296,7 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
         RecipeSpec(
             'docker-prepare-build',
             (
+                EnsureApiSecretStep(),
                 DockerModulesIgnoreStep(),
                 GenerateWorkersComposeStep(),
                 ComposeArtifactsStep(),
@@ -277,9 +325,10 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
         RecipeSpec(
             'docker-build',
             (
+                EnsureApiSecretStep(),
                 DockerModulesIgnoreStep(),
                 GenerateWorkersComposeStep(),
-                ComposeArtifactsStep(),
+                ComposeArtifactsStep(resolve_app_ports=False, warn_image_bases=True),
                 DockerBuildStep(skip_if_present=False),
             ),
             target='compose',
@@ -356,12 +405,14 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
                 continue
             name = f'service-{op}-{sid}'
             if name == 'service-install-all':
-                # Redis → app-службы → модули (host_lifecycle) → nginx
+                # Postgres/Redis/Meili → app-службы → модули (host_lifecycle) → nginx
                 specs.append(
                     RecipeSpec(
                         name,
                         (
+                            EnsurePostgresOsServiceStep(),
                             EnsureRedisOsServiceStep(),
+                            EnsureMeilisearchOsServiceStep(),
                             ServiceOperationStep(op, sid),
                             ModuleHostServicesStep('install'),
                             EnsureNginxOsServiceStep(),
@@ -415,6 +466,7 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
         ('redis', 'status'),
         ('redis', 'test'),
         ('postgres', 'install'),
+        ('postgres', 'install-service'),
         ('postgres', 'uninstall'),
         ('postgres', 'start'),
         ('postgres', 'stop'),
@@ -422,6 +474,14 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
         ('postgres', 'status'),
         ('postgres', 'test'),
         ('postgres', 'migrate-to-portable'),
+        ('meilisearch', 'install'),
+        ('meilisearch', 'install-service'),
+        ('meilisearch', 'uninstall'),
+        ('meilisearch', 'start'),
+        ('meilisearch', 'stop'),
+        ('meilisearch', 'restart'),
+        ('meilisearch', 'status'),
+        ('meilisearch', 'test'),
         ('tls', 'install'),
         ('tls', 'renew'),
         ('tls', 'status'),
@@ -433,7 +493,7 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
                 (InfraOperationStep(component, op),),
                 target='infra',
                 needs_sudo=(
-                    component in ('nginx', 'redis', 'postgres', 'tls')
+                    component in ('nginx', 'redis', 'postgres', 'tls', 'meilisearch')
                     and op not in ('status', 'test', 'migrate-to-portable')
                 ),
                 description=t('recipe_infra_op', component=component, op=op),
@@ -476,7 +536,16 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
         'restart-redis': 'redis-restart',
         'status-redis': 'redis-status',
         'test-redis': 'redis-test',
+        'install-meilisearch': 'meilisearch-install',
+        'install-meilisearch-service': 'meilisearch-install-service',
+        'uninstall-meilisearch': 'meilisearch-uninstall',
+        'start-meilisearch': 'meilisearch-start',
+        'stop-meilisearch': 'meilisearch-stop',
+        'restart-meilisearch': 'meilisearch-restart',
+        'status-meilisearch': 'meilisearch-status',
+        'test-meilisearch': 'meilisearch-test',
         'install-postgres': 'postgres-install',
+        'install-postgres-service': 'postgres-install-service',
         'uninstall-postgres': 'postgres-uninstall',
         'start-postgres': 'postgres-start',
         'stop-postgres': 'postgres-stop',

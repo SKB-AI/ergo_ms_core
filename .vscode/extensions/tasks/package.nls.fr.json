@@ -26,6 +26,7 @@
   "task.multiTerminal.group": "Groupe de terminaux pour la gestion",
   "task.multiTerminal.delay": "Délai entre les démarrages (ms)",
   "task.multiTerminal.hideControlTerminal": "Masquer le terminal de contrôle après le démarrage des terminaux enfants",
+  "task.multiTerminal.launchAs": "Lancer les enfants comme tâches VS Code (task) ou terminaux simples sans Running Tasks/toasts (terminal)",
   "task.ergoModule.label": "Nom de la tâche dans Run Task",
   "task.ergoModule.detail": "Courte description de la tâche",
   "task.ergoModule.command": "Commande ergoms …",

@@ -1,6 +1,6 @@
 # Аудит безопасности ядра
 
-Документ описывает состояние безопасности ядра ERGO MS по результатам проверки исходного кода **4 августа 2026 года**. Он предназначен для разработчиков ядра и для тех, кто отвечает за развёртывание системы на сервере: по каждой находке указано, где расположен код, чем именно опасно текущее поведение и что нужно изменить.
+Документ описывает состояние безопасности ядра ERGO MS по результатам проверки исходного кода **4 августа 2026 года**, с дополнениями **14 августа 2026** и повторной сверкой **18 августа 2026**. Он предназначен для разработчиков ядра и для тех, кто отвечает за развёртывание системы на сервере: по каждой находке указано, где расположен код, чем именно опасно текущее поведение и что нужно изменить.
 
 Проект градации режимов безопасности, которая позволит закрывать эти находки не точечно, а выбором уровня в `.env`, описан отдельно — [Режимы безопасности](security-modes.md). В последнем разделе этого документа находки сопоставлены с контролями режимов.
 
@@ -17,21 +17,16 @@
 
 Границы проверки, о которых важно помнить:
 
-- **Модули** в каталоге `modules/` не проверялись — у каждого модуля свой набор представлений и прав.
-- Не выполнялись **проверка зависимостей** на известные уязвимости и **тестирование на проникновение**; выводы сделаны по чтению кода.
+- **Модули** в каталоге `modules/` не проверялись в аудите кода — у каждого модуля свой набор представлений и прав.
+- Аудит **зависимостей** (CVE в Poetry/npm/portable-пакетах) выполняется отдельно командой `ergoms deps-audit` — см. раздел «Зависимости» ниже.
+- Не выполнялось **тестирование на проникновение**; выводы по коду сделаны по чтению исходников.
 - Не проверялась инфраструктура конкретной установки: реальные значения `.env`, правила межсетевого экрана, права на файлы на сервере.
 
 ## Сводка
 
-Найдено 3 критичных, 7 высоких, 11 средних и 7 низких по значимости отклонений.
+По состоянию на 4–14 августа в ядре было 3 критичных, 8 высоких, 11 средних и 7 низких отклонений. Повторная сверка 18 августа подтвердила, что критичные и высокие пункты того списка в коде закрыты. Новых критичных находок нет.
 
-Три главных риска, которые стоит закрывать в первую очередь:
-
-1. **Массовое создание учётных записей доступно любому вошедшему пользователю** — импорт пользователей не проверяет права администратора (К1).
-2. **Отзыв сессии устройства не работает на большей части эндпоинтов** — базовый класс представлений заменяет аутентификацию с привязкой к устройству на обычную (К2).
-3. **Шаблоны конфигурации содержат рабочие значения секретов** — установка, развёрнутая «как есть», подписывает токены и ссылки на файлы предсказуемым ключом (К3).
-
-Дальше по значимости идут неработающее ограничение частоты попыток входа (В1) и разрешающее поведение по умолчанию в мессенджере и на WebSocket (В3, В4).
+18 августа дополнительно найдено 1 высокое и 4 средних отклонения (В9, С12–С14 и регрессия лимита для гостей из С9). **В9, С12, С13 и С14 закрыты в коде** в тот же день. С9 оставлен как принятое решение: общий лимит гостя `60/minute` (boot SPA), вход и восстановление пароля — отдельные scope `5/minute`. Из прежнего списка по-прежнему открыты известные пробелы: MFA (С10), антивирус загрузок (С5), неполная CSP (С11), `public_id` в части административных ответов (Н1), HTTPS как контроль каталога, срок хранения аудита.
 
 ---
 
@@ -81,9 +76,11 @@ class ImportUsersView(MediaApiFileMixin, BaseAPIViewAuthMixin):
 
 **Исправлено.** Переопределение убрано — `BaseAPIView` наследует `DeviceBoundJWTAuthentication` из `DEFAULT_AUTHENTICATION_CLASSES`. Точечное исключение оставлено только на `LogoutView` (plain `JWTAuthentication`), чтобы выход из системы очищал cookie и при уже отозванной сессии устройства.
 
+**Исправлено (fail-closed).** `BaseAPIView` больше не задаёт `AllowAny`: по умолчанию `IsAuthenticated`, как глобальный DRF. Публичный доступ только через явный `BaseAPIViewPublicMixin` и строку в [`core_anonymous_allowlist.yaml`](../core/deployment/security/core_anonymous_allowlist.yaml). ACL `ApiAccessPolicyMiddleware` по-прежнему пропускает анонима на DRF и не заменяет `permission_classes`.
+
 ### К3. Шаблоны конфигурации содержат рабочие значения секретов
 
-**Где:** [.env.example](../.env.example) строка 80, [env/mcp.env.example](../env/mcp.env.example) строки 5–6, [databases.yaml.example](../databases.yaml.example).
+**Где:** [.env.example](../.env.example), [env/mcp.env.example](../env/mcp.env.example), [databases.yaml.example](../databases.yaml.example).
 
 ```dotenv
 API_SECRET_KEY=secret_key
@@ -94,6 +91,10 @@ ADMIN_PASSWORD=admin
 **Чем опасно.** При первичной настройке `setup-full` создаёт `.env` из шаблона, и установка стартует со значением `secret_key`. Этим же ключом по умолчанию подписываются JWT (`API_JWT_SIGNING_KEY` пуст — берётся `API_SECRET_KEY`) и ссылки на файлы в media_api. Знание ключа позволяет выпустить токен от имени любого пользователя, подделать подписанную ссылку на файл и сформировать токен загрузки. Проверка `validate_production_config` в media_api выдаёт лишь предупреждение и не останавливает запуск.
 
 **Как исправить.** Оставить в шаблонах пустое значение и подсказку `ergoms generate-secret`, а при `ERGO_ENV=production` прерывать запуск, если ключ пустой, совпадает с шаблонным или короче безопасной длины. Учётные данные MCP вынести из шаблона в обязательный шаг настройки.
+
+**Исправлено (phase 1).** В `.env.example` `API_SECRET_KEY=` пуст + `ergoms generate-secret`; в `env/mcp.env.example` `ADMIN_PASSWORD=` пуст; в `databases.yaml.example` и `env/smtp.env.example` пароли пустые. Production fail-fast в API (`ImproperlyConfigured`) и media_api (`RuntimeError`) через [`secret_validation.py`](../core/deployment/security/secret_validation.py): пустой / шаблонный / короче 32 символов. Контроль `secrets.no_defaults` — `implemented`. Обязательный MCP setup step — вне скоупа.
+
+**Исправлено (ключ поиска).** В коде больше нет запасного `ergo_ms_dev_meili_key` ([`search.py`](../core/api/src/config/settings/search.py), [`install_meilisearch.py`](../core/deployment/scripts/install_meilisearch.py)). При production и включённом поиске пустой или шаблонный `MEILI_MASTER_KEY` прерывает запуск. Контроль `search.master_key`.
 
 ---
 
@@ -161,6 +162,8 @@ ADMIN_PASSWORD=admin
 
 **Как исправить.** Добавить пароль в шаблон и в секцию `redis` файла `databases.yaml`, не публиковать порт на хост без явного запроса.
 
+**Исправлено.** Источник пароля — `databases.yaml` → `redis.password` (без `REDIS_PASSWORD` в `.env`). Пустой пароль сохраняет прежнее поведение (dev). Непустой пароль попадает в URL (`redis://:…@host:port/db`), в portable `requirepass` и в Docker overlay `docker-compose.redis-auth.generated.yml` вместе с healthcheck через AUTH. Пустой `DOCKER_REDIS_PUBLISH_PORT` больше не публикует Redis на хост (нужен явный числовой порт). Контроль `broker.redis_password`: на `open` пароль не обязателен; на `standard` — предупреждение; на `hardened`/`maximum` — ошибка без пароля; на `maximum` — также ошибка при публикации порта.
+
 ### В6. Сроки жизни токенов можно отключить, ротация refresh выключена
 
 **Где:** [core/api/src/config/settings/auth.py](../core/api/src/config/settings/auth.py), строки 76–99.
@@ -182,7 +185,19 @@ ADMIN_PASSWORD=admin
 
 **Как исправить.** Подставлять адреса для разработки только при `ERGO_ENV=development`, а в production требовать явный список и прерывать запуск при его отсутствии.
 
-**Исправлено.** Localhost-origins подставляются только при `is_development()`. В production без `CORS_ALLOWED_ORIGINS` и без `CORS_ALLOWED_ORIGIN_REGEXES` запуск прерывается (`ImproperlyConfigured`). При nginx публичный origin по-прежнему добавляется через `effective_cors_origins`, без смеси с localhost.
+**Исправлено.** Localhost-origins подставляются только при `is_development()`. В production без `CORS_ALLOWED_ORIGINS` и без `CORS_ALLOWED_ORIGIN_REGEXES` берётся публичный origin nginx или `FRONTEND_BASE_URL`; если и он пуст, запуск прерывается (`ImproperlyConfigured`). Список портов разработки в production не подмешивается.
+
+### В8. Публичный logout отзывает чужую сессию по токену без подписи
+
+**Где:** [core/api/src/core/cms/adp/services/session_devices.py](../core/api/src/core/cms/adp/services/session_devices.py), `_payload_from_refresh_string`; публичный [LogoutView](../core/api/src/core/cms/adp/views.py).
+
+После ошибки SimpleJWT разбор refresh делал `backend.decode(raw, verify=False)`. Поля `user_id` и `device_id` — последовательные целые. Гость мог отправить на `/cms/adp/logout/` cookie с подделанным JWT (любая подпись) и завершить сессию жертвы. Access после этого отсекался `DeviceBoundJWTAuthentication`.
+
+**Чем опасно.** Выход из системы доступен без входа. Без проверки подписи отзыв сессии превращается в принудительный разрыв чужой сессии по угаданным целым идентификаторам.
+
+**Как исправить.** Убрать `verify=False`. Для истёкшего, но настоящего refresh проверять подпись и игнорировать только `exp`. Без верной подписи очищать cookie и не трогать устройство. Сессию без `device_id` считать недействительной.
+
+**Исправлено.** `_payload_from_refresh_string` сначала разбирает токен через SimpleJWT; при ошибке (в том числе истечении) повторяет разбор с проверкой подписи и без проверки `exp`. Поддельный токен не даёт `user_id`/`device_id`, устройство не отзывается. `is_device_session_active` без `device_id` возвращает отказ. Контроль `token.revoke_on_logout`.
 
 ---
 
@@ -190,35 +205,51 @@ ADMIN_PASSWORD=admin
 
 ### С1. Состояние фоновой задачи импорта доступно постороннему
 
-`ImportUsersTaskStatusView` в [views_import.py](../core/api/src/core/cms/adp/views_import.py) (строка 166) принимает идентификатор задачи и возвращает её состояние без проверки инициатора. Идентификаторы задач непредсказуемы, поэтому риск ограничен, но утечка хода импорта и сообщений об ошибках возможна. Проверять инициатора так же, как при выдаче паролей.
+`ImportUsersTaskStatusView` в [views_import.py](../core/api/src/core/cms/adp/views_import.py) принимает идентификатор задачи и возвращает её состояние без проверки инициатора. Идентификаторы задач непредсказуемы, поэтому риск ограничен, но утечка хода импорта и сообщений об ошибках возможна.
+
+**Исправлено (вместе с К1).** Представление на `BaseAPIViewGlobalAdminMixin` и сверяет `initiated_by_user_id` из состояния задачи с текущим пользователем.
 
 ### С2. Не задан список доверенных источников для защиты от подделки запросов
 
 В настройках нет `CSRF_TRUSTED_ORIGINS`. Основной API работает на токенах, но refresh-токен хранится в cookie, и эндпоинт обновления сессии принимает его именно оттуда. Для сценариев за обратным прокси с несколькими именами узла список доверенных источников нужен.
 
+**Исправлено.** Модуль [`csrf.py`](../core/api/src/config/settings/csrf.py): `CSRF_TRUSTED_ORIGINS` из env; в development пустой список допустим; вне development, если список пуст, берётся публичный origin nginx или `FRONTEND_BASE_URL`; если и он пуст — `ImproperlyConfigured`. Контроль `csrf.trusted_origins` обязателен с уровня `standard` (вне development).
+
 ### С3. Внутренний API media доверяет заголовку `X-Forwarded-For`
 
 В [core/media_api/src/media_server/views_internal.py](../core/media_api/src/media_server/views_internal.py) доступ разрешён при совпадении общего секрета и «частном» адресе клиента, но адрес берётся из заголовка, который может подделать клиент при прямом обращении к сервису. В сети Docker адреса вида `172.x` считаются частными, поэтому любой контейнер сети при знании секрета получает полный доступ на чтение и запись. Нужен список доверенных прокси и проверка фактического адреса соединения.
+
+**Исправлено.** Клиентский IP вычисляется в [`client_ip.py`](../core/media_api/src/media_server/client_ip.py): `X-Forwarded-For` учитывается только если `REMOTE_ADDR` входит в `MEDIA_API_TRUSTED_PROXIES` (IP/CIDR). Пустой список (по умолчанию) — заголовок игнорируется. То же для health (`views.py`) и upload rate-limit (`middleware.py`). Контроль `internal.trusted_proxies`: с `hardened` не SKIP; на `maximum` дополнительно требуется `MEDIA_API_INTERNAL_KEY`, отличный от `API_SECRET_KEY`.
 
 ### С4. Запись через внутренний API без ограничения размера
 
 `InternalWriteView` читает тело запроса целиком в память без верхней границы. Это путь к исчерпанию памяти и заполнению диска. Ограничение нужно такое же, как для обычной загрузки.
 
+**Исправлено.** `InternalWriteView` проверяет `Content-Length` и фактический размер тела против `MEDIA_UPLOAD_MAX_SIZE` (тот же лимит, что у пользовательской загрузки); при превышении — 413.
+
 ### С5. Содержимое загружаемых файлов не проверяется
 
 Проверяется только расширение файла — при выдаче токена загрузки на стороне API и, если в токене указан список типов, на стороне media_api. Сигнатура содержимого не сверяется, антивирусной проверки нет. Файл с безобидным расширением может содержать что угодно.
+
+**Исправлено (phase 1, partial).** В media_api добавлена проверка `MEDIA_API_CONTENT_VALIDATION`: режимы `extension` (дефолт кода / `open`) и `extension_and_magic` (профили `standard` и `hardened`). Upload и InternalWrite отклоняют несовпадение расширения и сигнатуры (filetype), опасные sniff (html/exe) и SVG без svg/xml. Режим `extension_magic_av` (`maximum`) — stub без реального сканера: runtime отказывает честно (503), checker даёт SKIP/warning, не `[OK]`. Контроль каталога: `media.content_validation`, status `partial`.
 
 ### С6. Конфигурация nginx для Docker слабее, чем для обычной установки
 
 Шаблон [core/deployment/docker/nginx/ergo_ms.docker.conf.template](../core/deployment/docker/nginx/ergo_ms.docker.conf.template) работает только по HTTP, не подключает набор защитных заголовков и ограничения частоты запросов, а служебный адрес проверки состояния media_api открыт без ограничения по адресу — в отличие от шаблона для обычной установки. Нужно привести конфигурации к одному уровню.
 
+**Исправлено (паритет с host HTTP).** Docker-шаблон при рендере получает те же сниппеты, что host HTTP: `http_hardening`, `compression`, `rate_limit`, `security_headers`, `proxy_params`; на `/api/`, `/serve/`, `/upload/` — `limit_req`/`limit_conn`; `/health/` — `deny all` (healthcheck compose идёт в `media-api` напрямую). HTTPS в Docker по-прежнему опционален (`NGINX_USE_HTTPS`) и не навязывается docker-dev. Контроль `deploy.docker_nginx_parity`, check `docker_nginx_parity`.
+
 ### С7. Роль «Пользователь» без групп получает все права просмотра
 
 В [core/api/src/core/cms/adp/services/permissions.py](../core/api/src/core/cms/adp/services/permissions.py) (строки 562–594) при отсутствии у пользователя групп роли любой ключ права, оканчивающийся на `_view`, считается выданным. Это удобно при первичной настройке, но означает, что незаполненная конфигурация групп не ограничивает просмотр, а открывает его.
 
+**Исправлено.** Авто-выдача `_view` для роли «Пользователь» без групп зависит от `API_ADP_DEFAULT_VIEW_GRANTS` (`granted` | `denied`). Профиль: `open`/`standard` → `granted` (все `_view`), `hardened`/`maximum` → `denied` (`_view` только у модулей, которые API-политика deny не закрыла). Контроль `adp.default_role_view_grants`, check `adp_default_role_view_grants`, status `implemented`.
+
 ### С8. Объектные проверки прав нигде не формализованы
 
 Метод `has_object_permission` не встречается в `core/api/src` ни разу. Проверки конкретного объекта выполняются вручную в `get_queryset` и `get_object` отдельных представлений. Работает это только там, где автор об этом помнил; для новых представлений нет ни базового класса, ни автоматической проверки.
+
+**Исправлено (этап 2).** `ObjectPermissionMixin` по умолчанию запрещает доступ к объекту; `filter_queryset_for_user` без переопределения возвращает пустую выборку. Миксин подключён на представлениях мессенджера, уведомлений и аватара. `ergoms security-check` и `ergoms core-rules-check` помечают сырой `ModelViewSet` в `core/api` без object-scope или admin-маркера. Массовая миграция представлений модулей не входит. Контроль `api.object_permissions`, check `object_permissions`.
 
 ### С9. Шаблон `.env` ослабляет настройки по сравнению с кодом
 
@@ -238,9 +269,13 @@ ADMIN_PASSWORD=admin
 
 У профиля есть поле `two_factor_enabled`, его можно переключить через настройки безопасности пользователя, но вход второй фактор не запрашивает. Реализации одноразовых кодов или ключей в ядре нет. Признак в интерфейсе создаёт ложное ощущение защиты.
 
+**Исправлено (частично).** Эндпоинт настроек безопасности больше не отдаёт и не принимает `two_factor_enabled`. Поле в модели оставлено под будущий MFA. Вход по-прежнему без второго фактора. Контроль `auth.mfa_required` — `planned`.
+
 ### С11. Политика содержимого страниц зашита в код
 
 Заголовок `Content-Security-Policy` формируется в [core/api/src/core/utils/middleware/security_headers_middleware.py](../core/api/src/core/utils/middleware/security_headers_middleware.py) и включает `unsafe-eval` и `unsafe-inline` ради внешнего картографического сервиса. Настроить политику через переменные окружения нельзя, поэтому установка, которой карты не нужны, всё равно работает с ослабленной политикой.
+
+**Исправлено (phase 1, partial).** Режим `API_CSP_MODE`: `as_is` (текущая политика с unsafe и доменами карт), `no_unsafe` (без `unsafe-eval`/`unsafe-inline`; карты могут сломаться), `no_unsafe_plus_externals` (phase 1 stub — дополнительно урезаны внешние источники). Один ключ для API middleware и nginx render ([`csp_policy.py`](../core/deployment/security/csp_policy.py)); при unset профиль подставляет значение уровня. Контроль `csp.strict`, check `csp_strict`, status `partial`; на `maximum` checker даёт warning, пока полный список внешних доменов не зафиксирован.
 
 ---
 
@@ -250,9 +285,93 @@ ADMIN_PASSWORD=admin
 - **Н2. Cookie-подсказка о наличии сессии доступна сценариям на странице.** Cookie `ergo_session` намеренно не помечена как недоступная сценариям, чтобы клиент не делал лишних запросов. Секретов не содержит, но раскрывает факт наличия сессии.
 - **Н3. Подпись ссылки на файл не покрывает параметры запроса.** Подписывается строка «путь и срок», поэтому параметр принудительной загрузки можно изменить при действительной подписи. Опасные типы содержимого всё равно отдаются как вложение, поэтому влияние ограничено.
 - **Н4. Ошибки занесения токена в чёрный список подавляются.** В `session_devices.py` исключения при работе с чёрным списком проглатываются, и отзыв может незаметно не выполниться.
+
+**Исправлено (Н4).** Исключения `blacklist_refresh_jti` и отзыва сессии при выходе пишутся в журнал (`cms.adp.session`); выход по-прежнему идемпотентный (204).
 - **Н5. Имя пользователя записывается в журнал аудита при неудачном входе.** Событие `auth.login_failed` сохраняет введённое имя. Это полезно для расследований, но требует ограничения доступа к журналу, поскольку туда попадают в том числе опечатки в виде паролей.
 - **Н6. Записи об устройствах не удаляются.** Для журнала клиентского мониторинга срок хранения настраивается, для устройств пользователей — нет; записи накапливаются, пока сессию не отзовут вручную.
-- **Н7. Пример в документации API устарел.** Описание входа в Swagger показывает refresh-токен в теле ответа, хотя он давно передаётся только в cookie.
+
+**Исправлено (Н6).** `API_SESSION_DEVICE_RETENTION_DAYS` (0 = off; профиль hardened/maximum → 90/30): Celery task `core.cms.adp.purge_old_devices`, beat, `ergoms api session_device_purge`. Перед удалением — `revoke_user_device_session`. Контроль `session.device_retention` — `implemented`.
+- **Н7. Пример в документации API устарел.** Описание входа в Swagger показывало refresh-токен в теле ответа, хотя он давно передаётся только в cookie.
+
+**Исправлено (Н7).** Пример ответа входа содержит только `access`.
+
+### Дополнение 14 августа 2026
+
+- Блокировка входа (`auth.lockout`) на уровне `standard` — 10 неудачных попыток, как на `hardened`.
+- Проверка сигнатуры загрузок (`extension_and_magic`) на `standard`, не только на `hardened`.
+- Токен приглашения проверяется POST-телом с ограничением частоты; ссылка в письме — `/register#invite=…`; из адресной строки клиент сразу убирает `invite`.
+- `/api/internal/jupyter-access/` в nginx помечен `internal` (host и Docker): с браузера недоступен. Представления `JupyterAccessView` в коде нет — см. С13 (18 августа).
+- Внутренний мост сравнивает секрет с постоянным временем; при сбое кэша лимит частоты отказывает, а не пропускает.
+- Обработчик кнопки уведомления не может вызвать привилегированные операции ядра (`adp.`, `core.`, `session.` и остальные префиксы каталога).
+- Выход не разбирает refresh без проверки подписи: cookie смены аккаунта только из действующего токена или уже опознанного пользователя.
+- Управление приглашениями — `BaseAPIViewGlobalAdminMixin`, без ручной проверки в каждом методе.
+
+### Дополнение 18 августа 2026
+
+Повторная сверка закрытых пунктов **4–14 августа** по коду. Автопроверки на локальной установке (`ERGO_SECURITY=standard`, `ERGO_ENV=development`): `ergoms security-check` — 0 ошибок и 0 предупреждений, 3 пропуска (MFA, `public_id`, HTTPS); `ergoms core-rules-check` — изоляция **ядра** без нарушений. Проверка `modules/` в этот проход не входила; сканер изоляции модулей по-прежнему сообщает прямые импорты между модулями.
+
+Подтверждено закрытыми в коде: К1–К3, В1–В8, С1–С4, С6–С7, объектные права ядра (С8 в скоупе `core/api`), политика паролей и шаблоны секретов (С9 кроме лимита для гостей), Н4, Н6, Н7. Генерация пустых секретов при setup ([`ensure_secret.py`](../core/deployment/security/ensure_secret.py), [`ensure_infra_credentials.py`](../core/deployment/security/ensure_infra_credentials.py)) не затирает уже заданные значения и не печатает их в лог. Балансировщик Celery пишет overlay только в `virtual_env/cache/`, без отпечатка хоста в git.
+
+#### В9. `ergoms deps-audit` не распознаёт High по CVSS-вектору
+
+**Где:** [`core/deployment/scripts/deps_audit.py`](../core/deployment/scripts/deps_audit.py), функция `_osv_severity` (разбор `severity[].score` вида `CVSS:3.1/AV:N/...`).
+
+Прогон 18 августа: 23 находки, все с меткой `UNKNOWN`, код выхода 0 («нет High/Critical»). При этом GitHub Advisory [GHSA-537c-gmf6-5ccf](https://github.com/advisories/GHSA-537c-gmf6-5ccf) для `cryptography 46.0.7` — High 7.5 (DoS): в колёсах PyPI статически связан уязвимый OpenSSL, исправление с версии 48.0.1. Разборщик ищет ключ `CVSS:3.1` в частях вектора и число в конце строки; у типового вектора OSV ни того, ни другого нет, поэтому метка остаётся `UNKNOWN` и проверка не падает.
+
+**Чем опасно.** CI и `ergoms deps-audit` после `python-install` дают ложное ощущение, что High в lock нет. Установка с текущим `cryptography` уязвима к отказу в обслуживании через связанный OpenSSL, пока пакет не обновлён.
+
+**Как исправить.** Считать `database_specific.severity` из ответа OSV (поле `HIGH` / `CRITICAL`) и/или разбирать метрики CVSS (`C:`, `I:`, `A:`), а не суффикс вектора. Обновить `cryptography` до ≥48.0.1. Остальные UNKNOWN этого прогона: `pyarrow 22.0.0` (в Python-привязках pre-buffering не экспортируется), `sqlparse 0.5.5`, `torch 2.7.1` в venv модулей — разобрать по advisory после починки классификатора.
+
+**Исправлено.** `querybatch` OSV отдаёт только идентификатор; разборщик догружает карточку `/v1/vulns/{id}`, считает базовый балл CVSS 3.x и берёт `database_specific.severity`. В `pyproject.toml`: `cryptography = "^50.0.0"`, `sqlparse >=0.6.0`. High в пакетах модулей, которых нет в lock ядра (venv extra), печатается как предупреждение и не роняет код выхода. Проверка: `ergoms deps-audit`.
+
+#### С12. Служебный HTTP-мост слушает тот же порт, что публичный API
+
+**Где:** [`internal_views.py`](../core/api/src/core/integrations/internal_views.py), [`patterns/base.py`](../core/api/src/config/patterns/base.py) (`path("internal/", …)` рядом с `path("api/", …)`), публикация порта в [`docker-compose.yml`](../core/deployment/docker/docker-compose.yml) и [`docker-compose.dev.yml`](../core/deployment/docker/docker-compose.dev.yml).
+
+Маршруты `/internal/bridge/call|has|all` не входят в nginx (`location /api/` их не отдаёт). Токен сравнивается с постоянным временем; при пустом токене доступ только при `DEBUG` и loopback; при сбое кэша лимит частоты отказывает. В отличие от internal API media, при непустом токене адрес клиента не проверяется. Базовый compose публикует `API_PORT` на хост; для media-api в том же файле порт намеренно не публикуют, «чтобы `/internal` не был снаружи». Overlay `docker-compose.prod.yml` снимает публикацию API.
+
+**Чем опасно.** В docker-dev и при запуске API без nginx на всех интерфейсах любой, кто знает `BRIDGE_INTERNAL_TOKEN`, может вызвать любой локальный провайдер моста (аргументы из JSON). Это обход клиентского JWT. В production Docker с nginx и без публикации порта API поверхность закрыта reverse proxy.
+
+**Как исправить.** Как у media-api: не публиковать порт API на хост в dev без явного флага; в nginx добавить `location /internal/ { deny all; }` на случай catch-all; при непустом токене ограничить клиентов loopback/CIDR (аналог `MEDIA_API_TRUSTED_PROXIES`), кроме осмысленного списка сервисов microservice.
+
+**Исправлено.** В host и Docker nginx добавлен `location /internal/ { deny all; }`. После проверки токена `_guard` требует loopback либо private/link-local, если `BRIDGE_TRANSPORT=http` или `MODULE_RUNTIME=microservice|split`. Сообщения 401 для чужого адреса и чужого токена одинаковые. Публикация `API_PORT` в docker-dev сохранена для публичного API.
+
+#### С13. Шлюз Jupyter в nginx указывает на несуществующее представление
+
+**Где:** [`core_anonymous_allowlist.yaml`](../core/deployment/security/core_anonymous_allowlist.yaml) (`JupyterAccessView`, `/api/internal/jupyter-access/`), [`render_common.py`](../core/deployment/nginx/render_common.py) (`location = /api/internal/jupyter-access/ { internal; }`). Класса `JupyterAccessView` в `core/api` нет.
+
+**Чем опасно.** При Jupyter за nginx `auth_request` получает 404 от Django и превращается в 500 — лабораторная среда не открывается. Прямой браузерный запрос к шлюзу nginx по-прежнему режет (`internal`). Это отказ в обслуживании функции, а не обход входа. Строка в allowlist устарела и создаёт ложное ощущение, что представление есть и проверено.
+
+**Как исправить.** Вернуть представление с проверкой сессии (как обещает комментарий allowlist) либо убрать location и запись из allowlist, пока шлюз не реализован.
+
+**Исправлено.** `JupyterAccessView` на `/api/internal/jupyter-access/`: `BaseAPIViewPublicMixin`, вход через Bearer или подписанный refresh-cookie, доступ только глобальному администратору (`PermissionService.is_admin`). Прямой браузерный GET по-прежнему режет nginx (`internal`).
+
+#### С14. Режим `jwt_claims` не проверяет активность пользователя
+
+**Где:** [`authentication.py`](../core/api/src/core/cms/adp/authentication.py), контракт `session.device_active` в [`module_contracts.py`](../core/api/src/core/integrations/module_contracts.py). Провайдера `session.device_active` в ядре нет. `JwtPrincipal` всегда `is_authenticated=True` и `is_active=True`, без чтения `auth_user`.
+
+По умолчанию `MODULE_AUTH_MODE=orm` — путь не используется. Если `bridge.call` возвращает `None`, код падает обратно на ORM. Если провайдер появится и вернёт истину для отозванного или выключенного пользователя, процесс модуля примет principal из claims.
+
+**Чем опасно.** На уровне 3 (отдельный процесс модуля без БД ядра) приостановка учётной записи может не отозвать доступ, пока жив JWT и сессия устройства. Сейчас это латентный дефект контракта, не дыра в монолите.
+
+**Как исправить.** Реализовать провайдер в ядре: активное устройство **и** активный пользователь. В `JwtPrincipal` не считать `is_active` истиной по умолчанию. Пока провайдера нет — в `jwt_claims` без ответа моста отказывать, а не молча брать ORM, если процесс БД ядра не видит.
+
+**Исправлено.** Провайдер `session.device_active` в ADP ищет пользователя по `user_id` или `user_public_id`, отказывает если записи нет или `not is_active`, затем проверяет устройство. В `jwt_claims` ответ моста `None` или `False` даёт `AuthenticationFailed` без запасного ORM. `JwtPrincipal` создаётся только после успешной проверки.
+
+#### Регрессия С9: лимит для гостей снова 60/минуту
+
+В коде и в [`.env.example`](../.env.example) `API_THROTTLE_RATES_ANON=60/minute`. После С9 в документе было выровнено на `10/minute`, как в коде того дня. Отдельный лимит входа `5/minute` (`ScopedRateThrottle`) на представлениях авторизации сохранён. Общий anon-лимит снова в шесть раз выше задокументированного минимума.
+
+**Как исправить.** Вернуть дефолт кода и шаблон к `10/minute` либо явно описать 60/минуту как решение и добавить контроль в каталог.
+
+**Принято.** Общий лимит гостя остаётся `60/minute` в коде и в [`.env.example`](../.env.example): boot SPA и обновление страницы бьют несколько публичных эндпоинтов. Защита от подбора пароля — не этот лимит, а `ScopedRateThrottle` `5/minute` на вход и восстановление пароля. Отдельный контроль каталога под общий anon-лимит не добавлялся.
+
+### Дополнение 14 августа 2026 (закрытие серьёзных остатков)
+
+- **Logout без подписи.** `_payload_from_refresh_string` больше не делает `decode(verify=False)`. Истёкший refresh принимается только с верной подписью (`verify_exp=False`). Без подписи сессия устройства не отзывается. `is_device_session_active` без `device_id` возвращает отказ.
+- **Ключ поиска.** В коде нет запасного `ergo_ms_dev_meili_key`. При `ERGO_ENV=production` и включённом поиске пустой или шаблонный `MEILI_MASTER_KEY` прерывает запуск API (`ImproperlyConfigured`) и `ergoms` start Meilisearch.
+- **Ложный 2FA.** `UserSecuritySettingsView` не отдаёт и не принимает `two_factor_enabled`.
+- **Объектные права.** Дефолт миксина — запрет; мессенджер, уведомления и аватар подключены; checker ловит сырые ViewSet ядра.
 
 ---
 
@@ -289,18 +408,54 @@ ADMIN_PASSWORD=admin
 | В5 | `broker.redis_password` | `hardened` |
 | В6 | `token.lifetime_required`, `token.rotate_refresh`, `token.revoke_on_logout` | `standard` |
 | В7 | `cors.explicit_origins` | `standard` |
+| В8 | `token.revoke_on_logout` | `standard` |
 | С1 | `api.task_status_owner` | `standard` |
-| С2 | `csrf.trusted_origins` | `hardened` |
+| С2 | `csrf.trusted_origins` | `standard` |
 | С3 | `internal.trusted_proxies` | `hardened` |
 | С4 | `internal.write_size_limit` | `standard` |
-| С5 | `media.content_validation` | `hardened` (проверка сигнатуры), `maximum` (антивирусная проверка) |
+| С5 | `media.content_validation` | `standard` (проверка сигнатуры), `maximum` (антивирусная проверка) |
 | С6 | `deploy.docker_nginx_parity` | `hardened` |
 | С7 | `adp.default_role_view_grants` | `hardened` |
 | С8 | `api.object_permissions` | `hardened` |
 | С9 | `api.docs_exposure`, `password.policy` | `standard` |
 | С10 | `auth.mfa_required` | `maximum` |
 | С11 | `csp.strict` | `hardened` |
+| В9 | нет в каталоге (качество `deps-audit`) | — |
+| С12 | нет в каталоге (публикация `/internal/bridge/`) | — |
+| С13 | `jupyter.exposure` не ловит отсутствие представления | — |
+| С14 | нет в каталоге (`MODULE_AUTH_MODE=jwt_claims`) | — |
 | Н1 | `api.public_id_only` | `hardened` |
 | Н6 | `session.device_retention` | `hardened` |
 
-Находки Н2–Н5 и Н7 отдельными контролями не покрываются: они устраняются разовой правкой и не зависят от выбранного уровня.
+Находки Н2–Н5 отдельными контролями не покрываются: они устраняются разовой правкой и не зависят от выбранного уровня. Н7 закрыт правкой примера в Swagger.
+
+---
+
+## Зависимости (13 августа 2026, повтор 18 августа)
+
+Проверка известных CVE в lock-файлах и portable-пакетах. Повторный прогон: `ergoms deps-audit` (OSV по `poetry.lock` и пакеты модулей в venv; `npm audit --omit=dev`). High/Critical должны давать ненулевой код выхода. Moderate — предупреждение. Классификатор CVSS починен (В9); `cryptography` в lock ядра — ≥50.0.0. После смены lock не оставляйте High/Critical без явной записи justification.
+
+### Что закрыто
+
+| Область | Было | Стало |
+|---|---|---|
+| Meilisearch (portable) | 1.12.8 (authenticated SSRF) | **1.43.1**; Python-клиент `meilisearch>=0.40,<0.42` |
+| PDF в RAG | PyPDF2 3.0.1 | **pypdf≥6.14.2** |
+| FFmpeg | `master-latest` без пина | BtbN **n7.1.5** (autobuild-2026-08-12) |
+| npm | axios `^1.12.2`; мёртвые пакеты; pdfjs-dist `^5` | axios **≥1.18.0**; удалены vue-3-mask, html2canvas, intro.js, @bhplugin/vue3-datatable; **pdfjs-dist 6.2.108** без caret в `modules/<имя>/client/package.json` модуля, который читает PDF (не в lock ядра; 5.6.83–6.2.107 XSS) |
+| OpenAPI | drf-yasg | **drf-spectacular** |
+| Toast / виртуализация | vue-toastification RC, vue-virtual-scroller beta | **vue-sonner** (только через `toast.js`); виртуальный скролл таблиц — **@tanstack/vue-virtual** в `client/package.json` модуля, которому он нужен |
+| DOCX→PDF | unoconv / docx2pdf | **soffice** (LibreOffice) |
+| Prod-поверхность | Jupyter и mcp в main Poetry; django_extensions всегда | группы `jupyter` / `mcp`; django_extensions только в development; Docker API-слой `--only main` |
+
+После обновления Meilisearch с 1.12 выполните `ergoms search-reindex`. Dump 1.12→1.43 может потребовать переиндексации с нуля.
+
+Диапазон exclusive-пакетов модулей (например pypdf) задаётся в `modules/<имя>/pyproject.toml`, не в lock ядра.
+
+18 августа закрыты High в lock ядра: `cryptography ^50.0.0` (OpenSSL в колёсах и PKCS#7) и `sqlparse >=0.6.0`. Разборщик OSV догружает полную карточку. 20 августа в модулях: `education_materials_parser` переведён с PyPDF2 на `pypdf≥6.14.2`; `pyarrow≥23.0.1`; CUDA-связка `torch==2.10.0+cu128` / `torchvision==0.25.0+cu128` / `torchaudio==2.10.0+cu128`. Индекс остаётся `cu128`; 2.11+ требует `setuptools<82` и не ставится рядом с `setuptools 84` из lock ядра.
+
+### Чеклист
+
+1. `ergoms deps-audit` — нет High/Critical.
+2. `ergoms lock-check` после смены lock.
+3. Не коммитить `poetry.lock` / `virtual_env/npm/package-lock.json` с High/Critical без записи justification.

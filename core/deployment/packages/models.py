@@ -47,6 +47,7 @@ class PackageSpec:
     marker_windows: str | None = None
     marker_linux: str | None = None
     extra_dirs: tuple[str, ...] = ()
+    always_run: bool = False
     platforms: dict[str, PlatformArchive] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 

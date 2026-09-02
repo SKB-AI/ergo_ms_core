@@ -41,8 +41,16 @@ function createWindowsImpl() {
         (command.startsWith('powershell') && command.includes('.ps1'));
       const options = env ? { cwd, env } : { cwd };
       if (usePowerShell) {
+        const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+        const powershell = path.join(
+          systemRoot,
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        );
         return {
-          executable: 'powershell.exe',
+          executable: powershell,
           args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
           options
         };

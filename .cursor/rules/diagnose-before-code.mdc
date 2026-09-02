@@ -5,53 +5,21 @@ alwaysApply: true
 
 # Диагностика до правки кода
 
-Симптом в браузере, логах или консоли **не** означает «нужно менять исходники». Сначала отдели **конфиг / артефакт / процесс** от **бага в коде**.
+Симптом в браузере или логах **не** значит «править исходники». Сначала отдели конфиг / устаревший `dist` / процесс от бага в логике.
 
-## Кратко
+1. Сверь `.env` с тем, что зашито в runtime и сборку.
+2. Если конфиг верный, а поведение старое — пересобери или перезапусти (`ergoms client-build`, `reload-nginx`), не пиши обходной путь в коде.
+3. Меняй код только когда ошибка повторяется при актуальной сборке.
 
-1. Сверь **`.env`** с ожидаемым сценарием (nginx, Redis, Docker) и с тем, что реально зашито в runtime/сборку.
-2. Если конфиг верный, а поведение старое — это **устаревший артефакт или процесс**, не дефект логики.
-3. Скажи пользователю команду (`ergoms client-build`, `reload-nginx`, перезапуск API) — **не** пиши обходной путь в коде.
-4. Меняй код только когда доказано, что при актуальной сборке/конфиге логика действительно неверна.
+CSP `connect-src 'self'` за nginx при `ERGO_PROXY=nginx` и старом `dist` → `ergoms client-build`, не патч `baseUrl` / CORS. Не ослабляй security headers, чтобы «заработало» при неверном origin API.
 
-## Типичные случаи «не трогай код»
-
-| Симптом | Сначала проверь | Действие |
-|---|---|----|
-| CSP `connect-src 'self'`, запросы на `localhost:API_PORT` за nginx | В `.env` есть `ERGO_PROXY=nginx` (или `CLIENT_USE_RELATIVE_API=true`), а в `core/client/dist` зашито `false` | `ergoms client-build`, Ctrl+F5; при службе — `ergoms reload-nginx` |
-| Старые переменные в SPA после правки `.env` | Production-бандл печёт env на сборке (`clientEnv`, `vite.config.js`) | Пересобрать клиент, не дублировать «runtime fallback» |
-| «Не подхватился» nginx / Redis / TLS | Служба, порт, `install-*` / `reload-*` | Команды ergoms из [`deployment-infra.mdc`](deployment-infra.mdc) |
-| Dev без nginx ходит не туда | Vite vs `ergoms start-client` при `NGINX_ENABLED` | Сценарий запуска, не правка `baseUrl` |
-
-## Запрещено
-
-- Ослаблять CSP / CORS / security headers, чтобы «заработало» при неверном origin API.
-- Добавлять runtime-эвристики («если production и origin ≠ API — всегда relative»), маскирующие устаревший `dist` или забытый `CLIENT_USE_RELATIVE_API`.
-- Чинить симптом вторым путём в коде, когда первый (пересборка, reload, правка `.env` человеком) уже достаточен.
-- Массово править код «на всякий случай», не показав пользователю, что достаточно операции окружения.
-
-## Базовый пример
-
-```text
-BAD — CSP блокирует http://localhost:8000 за nginx
-→ патч baseUrl.js / connect-src / «умный» fallback в клиенте
-
-GOOD
-→ в .env уже ERGO_PROXY=nginx (relative API effective)
-→ в dist зашито false → сказать: ergoms client-build (и обновление страницы)
-```
-
-## Когда код всё же нужен
-
-- После пересборки/перезапуска с актуальным `.env` ошибка **повторяется**.
-- В исходниках явно неверная логика (несовпадение с [`deployment-infra.mdc`](deployment-infra.mdc), контрактом, security).
-- Пользователь **явно** просит изменить поведение или усилить защиту от повторения (и согласен на правку кода).
+Пустой экран / пустая консоль за nginx при живом Vite: сначала `logs/nginx-access.log` и актуальный `dist`, не правь CORS. Разбор — [`nginx-spa-boot.mdc`](nginx-spa-boot.mdc).
 
 ## Связанные правила
 
 | Тема | Файл |
-|---|---|
-| Уточнять, а не гадать | [`clarifying-questions.mdc`](clarifying-questions.mdc) |
+|------|------|
 | nginx, relative API | [`deployment-infra.mdc`](deployment-infra.mdc) |
-| Команды ergoms | [`no-direct-manage-py.mdc`](no-direct-manage-py.mdc) |
-| Безопасность (не ослаблять молча) | [`security.mdc`](security.mdc) |
+| Пустой экран за nginx | [`nginx-spa-boot.mdc`](nginx-spa-boot.mdc) |
+| Команды | [`no-direct-manage-py.mdc`](no-direct-manage-py.mdc) |
+| Безопасность | [`security.mdc`](security.mdc) |

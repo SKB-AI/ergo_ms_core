@@ -18,7 +18,14 @@ from lifecycle.host import ops as host_ops  # noqa: E402
 from lifecycle.host.shell_bridge import invoke_dispatch  # noqa: E402
 from lifecycle.steps.base import DeploymentStep, StepResult  # noqa: E402
 
-DEFAULT_CORE_SUBMODULES = ('core/api', 'core/client', 'core/media_api')
+# Ядро + community-репозиторий организации (шаблоны issues/PR, CONTRIBUTING и т.п.).
+# Deploy-рецепты передают paths явно и .github не тянут.
+DEFAULT_CORE_SUBMODULES = (
+    'core/api',
+    'core/client',
+    'core/media_api',
+    'core/.github',
+)
 
 
 class HostExecutionPolicyStep(DeploymentStep):
@@ -42,10 +49,23 @@ class HostExecutionPolicyStep(DeploymentStep):
         return StepResult(exit_code=code)
 
 
+def _submodule_initialized(root: Path, rel: str) -> bool:
+    """True, если submodule уже клонирован (.git — файл или каталог)."""
+    sub = root / rel
+    return (sub / '.git').exists() and sub.is_dir()
+
+
 class GitSubmoduleUpdateStep(DeploymentStep):
-    def __init__(self, paths: tuple[str, ...] = DEFAULT_CORE_SUBMODULES, branch: str = 'dev') -> None:
+    def __init__(
+        self,
+        paths: tuple[str, ...] = DEFAULT_CORE_SUBMODULES,
+        branch: str = 'dev',
+        *,
+        remote: bool = True,
+    ) -> None:
         self._paths = paths
         self._branch = branch
+        self._remote = remote
 
     @property
     def name(self) -> str:
@@ -55,7 +75,17 @@ class GitSubmoduleUpdateStep(DeploymentStep):
         root = ctx.project_root
         paths = ctx.options.get('submodule_paths', self._paths)
         branch = ctx.option_str('checkout_branch', self._branch)
-        cmd = ['git', 'submodule', 'update', '--init', '--remote', *paths]
+        force = ctx.option_bool('force')
+        already_init = bool(paths) and all(_submodule_initialized(root, rel) for rel in paths)
+        # setup-full (remote=False): без --remote; при уже клонированных — полный skip
+        use_remote = bool(force or self._remote)
+        if not use_remote and already_init and not force:
+            print(format_console('skip', t('git_submodules_already_init_skip')))
+            return StepResult()
+        cmd = ['git', 'submodule', 'update', '--init']
+        if use_remote:
+            cmd.append('--remote')
+        cmd.extend(paths)
         code = subprocess.call(cmd, cwd=str(root))
         if code != 0:
             return StepResult(exit_code=code, message=t('git_submodule_update_failed'))
@@ -80,6 +110,23 @@ class ConfigScaffoldStep(DeploymentStep):
         argv = [*host_ops.base_python_argv(ctx.project_root, ctx.platform), str(script), '--root', str(ctx.project_root)]
         code = subprocess.call(argv, cwd=str(ctx.project_root))
         return StepResult(exit_code=code)
+
+
+class RestoreArtifactOwnershipStep(DeploymentStep):
+    """Кэш Vite, portable-пакеты и логи не должны оставаться у root после sudo."""
+
+    def should_run(self, ctx: DeploymentContext) -> bool:
+        return ctx.runtime == 'host' and ctx.platform != HostPlatform.WIN32
+
+    @property
+    def name(self) -> str:
+        return 'restore_artifact_ownership'
+
+    def run(self, ctx: DeploymentContext) -> StepResult:
+        from lifecycle.host.privilege import restore_runtime_artifact_ownership
+
+        restore_runtime_artifact_ownership(ctx.project_root)
+        return StepResult()
 
 
 class CreateVenvStep(DeploymentStep):

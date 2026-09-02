@@ -5,101 +5,44 @@ alwaysApply: true
 
 # Изоляция ядра от модулей
 
-Ядро (`core/api`, `core/client`, `core/media_api`, `core/deployment`) **не знает** домен модулей. Связь только через **generic** ModuleBridge и hook discovery.
-
-Проверка: `ergoms core-rules-check`. Подробности — [`struct.mdc`](struct.mdc), контракты — [`module-contracts.mdc`](module-contracts.mdc).
+Ядро (`core/api`, `core/client`, `core/media_api`, `core/deployment`) **не знает** домен модулей. Связь — generic ModuleBridge и hook discovery. Проверка: `ergoms core-rules-check` (весь `core/` и `.cursor/rules/`, включая комментарии). Эталон логина и каталог hook’ов — [`modules.mdc`](modules.mdc); контракты — [`module-contracts.mdc`](module-contracts.mdc).
 
 ## Кратко
 
-- В ядре **нет** `from modules.<имя>...` и static import из `modules/` в бизнес-коде
-- В ядре **нет** строк имён модулей (`'<name>'`, `'<other_module>'`, …) в runtime
-- В ядре **нет** зашитых доменных claim/моделей/маршрутов модуля (конкретные ключи JWT декларирует модуль)
-- Нужны данные/поведение модуля **в сценарии ядра** → **platform**-контракт в `module_contracts` + `bridge.call` / `provide` / hook-файл
-- Связь **только между модулями** (ядро группу не читает) → **не** в `moduleContracts` / `module_contracts` и не в `core/…/integrations/`; константа у хоста, у провайдера — та же строка ([`module-contracts.mdc`](module-contracts.mdc) → «Что класть в каталог ядра»)
-- Имена контрактов со стороны ядра — **generic** (`session.*`, `audit.*`, `core.*`), не `<имя_модуля>.*`
+- Нет `from modules.<имя>...` и static import из `modules/` в бизнес-коде ядра
+- Нет имён установленных модулей в runtime **и** в комментариях/docstring ядра и `.cursor/rules/` — только плейсхолдеры `<name>`
+- Нет зашитых JWT claim / моделей / маршрутов модуля; ядро кладёт **произвольный** dict claims
+- Данные модуля в сценарии ядра → platform-контракт + `bridge.call` / hook
+- Связь только модуль↔модуль → **не** в каталог ядра (`module_contracts` / `core/…/integrations/`)
+- Имена контрактов ядра — generic (`session.*`, `audit.*`, `core.*`), не `<имя_модуля>.*`
 
-## Запрещено в `core/`
+## Запрещено
 
 ```python
-# BAD — прямой импорт домена модуля
+# BAD
 from modules.<name>.api.models import SomeEntity
-from modules.<name>.api.services import restore_scope
-
-# BAD — ядро вызывает op по имени модуля
 claims = bridge.call('<name>.restore_session', user=user)
-
-# BAD — hardcoded имя модуля
-if app_label == '<name>':
-    ...
+# BAD — slug модуля в комментарии
+# Django AppConfig default: "<name>".title()
 ```
 
 ```javascript
-// BAD — домен модуля в ядре
+// BAD
 import { useSomeStore } from '@/modules/<name>/client/js/store.js'
-router.push({ name: 'SomeModuleHome' })
-
-// BAD — доменный id в браузерном storage
-localStorage.setItem('last_scope_id', scopeId)
-
-// BAD — межмодульный контракт (хост ↔ провайдер) в каталоге ядра
 export const HOST_SETTINGS_ADDITIONAL_PANELS_GROUP = 'host_settings.additional_panels'
 ```
 
-## Обязательно
-
-| Нужно | Как |
-|-------|-----|
-| Логика модуля в сценарии ядра (логин, меню, audit) | Константа контракта + `bridge.call` / `emit` / group |
-| Подключение модуля при старте | Hook discovery (`apps.py`, `integrations.js`, `routeGuard.js`, …) |
-| Session JWT claims | Модуль декларирует в `session_context.claims`; ядро только читает/кладёт **произвольный** dict claims |
-| Восстановление scope при логине | `bridge.call(SESSION_RESTORE_CLAIMS, user=user)` → dict или пусто; **ключи dict ядру неизвестны** |
-
-## Базовый пример (логин — эталон)
-
-Ядро **не** восстанавливает конкретный домен. Оно запрашивает opaque dict claims:
-
 ```python
-# core/api/.../views_auth.py — GOOD
-from src.core.integrations import bridge
-from src.core.integrations.module_contracts import SESSION_RESTORE_CLAIMS
-from src.core.cms.adp.session_context_tokens import ScopedSessionRefreshToken
-
+# GOOD — opaque claims, ключи dict ядру неизвестны
 restore_claims = bridge.call(SESSION_RESTORE_CLAIMS, user=user) or {}
-if not isinstance(restore_claims, dict):
-    restore_claims = {}
-refresh = ScopedSessionRefreshToken.for_user_with_claims(user, **restore_claims)
 ```
 
-```python
-# modules/<владелец_scope>/api/integrations.py — GOOD (домен только в модуле)
-@bridge.provide_op(SESSION_RESTORE_CLAIMS)
-def _restore_session_claims(*, user=None, **_):
-    return get_restorable_session_claims(user)  # например {'<claim>': …} или None
-```
-
-Если провайдера нет — `bridge.call` вернёт пусто, логин без scope.
-
-## Допустимо в ядре (не путать с доменом)
-
-- Инфраструктура discovery / ModuleLoader / RouteGuardsManager
-- Generic session-scope (`sessionScopeGuard`, `hasActiveSessionScope`, claim **по имени из контракта**)
-- Константы **platform**-контрактов в `module_contracts.py` / `moduleContracts.js` — только если ядро их потребляет
-- В правилах Cursor **не** иллюстрируй реальными именами установленных модулей — только плейсхолдеры `<name>`, `<host_module>`, `<provider>` (см. [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc))
-
-## Чеклист перед merge правок в `core/`
-
-1. Нет `modules.` в import бизнес-кода ядра
-2. Нет литералов имён модулей в runtime (кроме allowlist `core-rules-check`)
-3. Нет доменных моделей/сервисов модулей и зашитых ключей их JWT claims
-4. Новая связь **ядро↔модуль** — сначала platform-контракт в каталоге, потом `bridge` / hook
-5. Связь **только модуль↔модуль** — **не** добавлять в каталог ядра и не класть хелперы в `core/…/integrations/`
-6. `ergoms core-rules-check` без ошибок по isolation
+Новая связь ядро↔модуль — сначала константа в каталоге, потом `bridge` / hook. Доменный loader модуля — в `modules/<name>/`, не в `core/deployment/scripts/`.
 
 ## Связанные правила
 
 | Тема | Файл |
 |------|------|
-| Архитектура | [`struct.mdc`](struct.mdc) |
-| Модули, мост | [`modules.mdc`](modules.mdc) |
+| Архитектура, hook’и | [`struct.mdc`](struct.mdc), [`modules.mdc`](modules.mdc) |
 | Каталог контрактов | [`module-contracts.mdc`](module-contracts.mdc) |
-| Безопасность | [`security.mdc`](security.mdc) |
+| Вынос / FK / isolated | [`modularization.mdc`](modularization.mdc) |

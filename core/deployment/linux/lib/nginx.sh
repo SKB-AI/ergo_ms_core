@@ -79,11 +79,19 @@ _nginx_install_binary() {
   jobs="$(nproc 2>/dev/null || echo 2)"
   pcre_flag="$(_nginx_configure_pcre_flag)"
 
+  local downloads cache_tarball
+  downloads="$root/virtual_env/cache/downloads"
+  mkdir -p "$downloads"
+  cache_tarball="$downloads/nginx-${NGINX_VERSION}.tar.gz"
   write_ergoms_message nginx_downloading cyan "" "version=$NGINX_VERSION"
-  if ! _nginx_download_tarball "$tarball"; then
+  if [[ -s "$cache_tarball" ]]; then
+    cp -f "$cache_tarball" "$tarball"
+  elif ! _nginx_download_tarball "$tarball"; then
     rm -rf "$build_dir"
     write_ergoms_message nginx_error_download red --stderr
     return 1
+  else
+    cp -f "$tarball" "$cache_tarball" || true
   fi
 
   write_ergoms_message nginx_unpacking cyan
@@ -272,6 +280,65 @@ _nginx_select_template() {
   fi
 }
 
+_nginx_write_rendered_site() {
+  local root="$1"
+  local server_name="$2"
+  local listen_host="$3"
+  local listen_port="$4"
+  local use_ssl="$5"
+  local template rendered site_conf
+
+  template="$(_nginx_select_template "$root" "$use_ssl")"
+  if [[ ! -f "$template" ]]; then
+    write_ergoms_message error_template_not_found red --stderr "path=$template"
+    return 1
+  fi
+
+  local dist_path="$root/core/client/dist"
+  if [[ ! -f "$dist_path/index.html" ]]; then
+    write_ergoms_message error_index_html_not_found red --stderr "path=$dist_path"
+    write_ergoms_message nginx_need_client_build yellow >&2
+    echo "    ergoms client-build" >&2
+    write_ergoms_message hint_then_install_nginx yellow >&2
+    return 1
+  fi
+
+  rendered="$(_nginx_render_template "$template" "$root" "$server_name" "$listen_host" "$listen_port" "$use_ssl")"
+  site_conf="$(_nginx_site_conf "$root")"
+  printf '%s\n' "$rendered" >"$site_conf"
+  write_ergoms_message ok_config_written green "" "path=$site_conf"
+  _nginx_write_main_conf "$root" "$site_conf"
+  restore_project_ownership "$root" "$(_nginx_packages_dir "$root")"
+}
+
+_nginx_resolve_listen() {
+  # После _nginx_read_env / _nginx_resolve_env. Имена 2–5 — nameref на переменные вызывающего.
+  local root="$1"
+  local -n _rl_name="$2"
+  local -n _rl_host="$3"
+  local -n _rl_port="$4"
+  local -n _rl_ssl="$5"
+  local override_name="${6:-}"
+  local override_port="${7:-}"
+  local override_ssl="${8:-false}"
+  _rl_host="${NGINX_LISTEN_HOST:-0.0.0.0}"
+  _rl_port="${override_port:-${NGINX_LISTEN_PORT:-80}}"
+  _rl_ssl="${override_ssl:-false}"
+  if [[ -n "$override_name" ]]; then
+    _rl_name="$override_name"
+  elif [[ -n "${NGINX_PUBLIC_HOST:-}" ]]; then
+    _rl_name="$NGINX_PUBLIC_HOST"
+  else
+    _rl_name="${NGINX_SERVER_NAME:-localhost}"
+  fi
+  if _nginx_should_use_ssl "$_rl_ssl" "$_rl_port"; then
+    _rl_ssl="true"
+    export ERGO_SSL_CERT="${ERGO_SSL_CERT:-/etc/ssl/certs/ssl-cert-snakeoil.pem}"
+    export ERGO_SSL_KEY="${ERGO_SSL_KEY:-/etc/ssl/private/ssl-cert-snakeoil.key}"
+    _nginx_warn_insecure_certs "$root"
+  fi
+}
+
 _nginx_resolve_env() {
   local root="$1"
   local py="$root/virtual_env/python/bin/python"
@@ -335,25 +402,8 @@ nginx_install() {
   local root="$1"
   _nginx_read_env "$root"
   _nginx_resolve_env "$root"
-  local server_name="${2}"
-  local listen_host="${NGINX_LISTEN_HOST:-0.0.0.0}"
-  local listen_port="${3}"
-  local use_ssl="${4:-false}"
-  if [[ -z "$server_name" ]]; then
-    if [[ -n "${NGINX_PUBLIC_HOST:-}" ]]; then
-      server_name="$NGINX_PUBLIC_HOST"
-    else
-      server_name="${NGINX_SERVER_NAME:-localhost}"
-    fi
-  fi
-  [[ -z "$listen_port" ]] && listen_port="${NGINX_LISTEN_PORT:-80}"
-
-  if _nginx_should_use_ssl "$use_ssl" "$listen_port"; then
-    use_ssl="true"
-    export ERGO_SSL_CERT="${ERGO_SSL_CERT:-/etc/ssl/certs/ssl-cert-snakeoil.pem}"
-    export ERGO_SSL_KEY="${ERGO_SSL_KEY:-/etc/ssl/private/ssl-cert-snakeoil.key}"
-    _nginx_warn_insecure_certs "$root"
-  fi
+  local server_name listen_host listen_port use_ssl
+  _nginx_resolve_listen "$root" server_name listen_host listen_port use_ssl "${2:-}" "${3:-}" "${4:-false}"
 
   echo ""
   write_ergoms_message heading_install_only cyan "" "name=Nginx"
@@ -365,29 +415,9 @@ nginx_install() {
     return 1
   fi
 
-  local template
-  template="$(_nginx_select_template "$root" "$use_ssl")"
-  if [[ ! -f "$template" ]]; then
-    write_ergoms_message error_template_not_found red --stderr "path=$template"
+  if ! _nginx_write_rendered_site "$root" "$server_name" "$listen_host" "$listen_port" "$use_ssl"; then
     return 1
   fi
-
-  local dist_path="$root/core/client/dist"
-  if [[ ! -f "$dist_path/index.html" ]]; then
-    write_ergoms_message error_index_html_not_found red --stderr "path=$dist_path"
-    write_ergoms_message nginx_need_client_build yellow >&2
-    echo "    ergoms client-build" >&2
-    write_ergoms_message hint_then_install_nginx yellow >&2
-    return 1
-  fi
-
-  local rendered site_conf
-  rendered="$(_nginx_render_template "$template" "$root" "$server_name" "$listen_host" "$listen_port" "$use_ssl")"
-  site_conf="$(_nginx_site_conf "$root")"
-  printf '%s\n' "$rendered" >"$site_conf"
-  write_ergoms_message ok_config_written green "" "path=$site_conf"
-
-  _nginx_write_main_conf "$root" "$site_conf"
 
   local nginx_bin main_conf nginx_dir
   nginx_bin="$(_nginx_binary "$root")"
@@ -403,10 +433,11 @@ nginx_install() {
   fi
 
   nginx_install_service "$root"
+  restore_project_ownership "$root" "$nginx_dir"
 
   write_ergoms_message ok_installed_and_running green "" "name=Nginx"
   write_ergoms_message label_path cyan "" "path=$nginx_dir"
-  write_ergoms_message label_config cyan "" "path=$site_conf"
+  write_ergoms_message label_config cyan "" "path=$(_nginx_site_conf "$root")"
   write_ergoms_message label_logs cyan "" "path=$nginx_dir/logs"
   if [[ "$use_ssl" == "true" ]]; then
     write_ergoms_message label_listening_https cyan "" "host=$server_name"
@@ -516,6 +547,12 @@ _nginx_remove_stale_pid_file() {
   pid="$(tr -d '[:space:]' <"$pid_file" 2>/dev/null || true)"
   if [[ "$pid" =~ ^[0-9]+$ ]]; then
     if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$pid_file"
+      return 0
+    fi
+    local comm
+    comm="$(tr -d '\0' <"/proc/$pid/comm" 2>/dev/null || true)"
+    if [[ "$comm" != "nginx" ]]; then
       rm -f "$pid_file"
     fi
     return 0
@@ -628,6 +665,14 @@ nginx_reload_service() {
   local root="$1"
   if ! _nginx_is_installed "$root"; then
     write_ergoms_message error_not_installed_run red --stderr "name=Nginx" "cmd=ergoms install-nginx"
+    return 1
+  fi
+
+  _nginx_read_env "$root"
+  _nginx_resolve_env "$root"
+  local server_name listen_host listen_port use_ssl
+  _nginx_resolve_listen "$root" server_name listen_host listen_port use_ssl
+  if ! _nginx_write_rendered_site "$root" "$server_name" "$listen_host" "$listen_port" "$use_ssl"; then
     return 1
   fi
 

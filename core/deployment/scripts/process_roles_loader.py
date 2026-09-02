@@ -40,6 +40,8 @@ class ProcessRoleRule:
     module: str
     process_names: tuple[str, ...]
     when: tuple[ProcessRoleWhen, ...]
+    reserve_host_budget: bool = False
+    reserve_vram_mb: float = 0.0
 
 
 def _warn(message: str) -> None:
@@ -114,11 +116,20 @@ def _parse_role(raw: Any, *, module: str, path: Path) -> ProcessRoleRule | None:
     process_names = tuple(
         name.lower() for name in _as_str_tuple(raw.get('process_names'))
     )
+    reserve_vram = 0.0
+    raw_vram = raw.get('reserve_vram_mb')
+    if raw_vram not in (None, ''):
+        try:
+            reserve_vram = max(0.0, float(raw_vram))
+        except (TypeError, ValueError):
+            reserve_vram = 0.0
     return ProcessRoleRule(
         role_id=role_id,
         module=module,
         process_names=process_names,
         when=tuple(when_entries),
+        reserve_host_budget=bool(raw.get('reserve_host_budget', False)),
+        reserve_vram_mb=reserve_vram,
     )
 
 

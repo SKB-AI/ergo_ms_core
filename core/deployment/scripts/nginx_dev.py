@@ -70,6 +70,25 @@ def is_nginx_managed_service(root: Path) -> bool:
     return is_managed_service(windows_name=NGINX_WINDOWS_SERVICE, linux_name=NGINX_LINUX_SERVICE)
 
 
+def _linux_nginx_unit_installed() -> bool:
+    """Unit systemd установлен (даже если сейчас inactive)."""
+    if os.name == 'nt':
+        return False
+    result = subprocess.run(
+        ['systemctl', 'cat', NGINX_LINUX_SERVICE],
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _listen_port_needs_privilege(port: str) -> bool:
+    try:
+        return int(str(port).strip()) < 1024
+    except (TypeError, ValueError):
+        return True
+
+
 def _remove_stale_pidfile(nginx_dir: Path) -> None:
     (nginx_dir / 'logs' / 'nginx.pid').unlink(missing_ok=True)
 
@@ -167,6 +186,16 @@ def run_nginx_foreground() -> int:
         print(format_console('info', t('nginx_os_service_no_control')))
         _print_client_hint(url)
         return tail_log_files(access_paths, service='nginx', process_keeps_running=True)
+
+    # Порт <1024 без root/capability: foreground из VS Code падает с Permission denied.
+    # Если unit установлен — нужен ergoms start-nginx, а не start-nginx-dev.
+    if (
+        os.name != 'nt'
+        and _listen_port_needs_privilege(port)
+        and _linux_nginx_unit_installed()
+    ):
+        print(format_console('error', t('nginx_privileged_port_use_service', port=port)))
+        return 1
 
     marker = read_dev_session_marker(PROJECT_ROOT)
 

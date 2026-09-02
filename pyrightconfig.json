@@ -1,5 +1,9 @@
 {
-  "include": ["core/api/src", "modules"],
+  "include": [
+    "core/api/**",
+    "core/media_api/**",
+    "modules/**"
+  ],
   "venvPath": "virtual_env/",
   "venv": "python"
 }

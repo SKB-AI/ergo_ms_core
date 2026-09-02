@@ -1,40 +1,51 @@
-# Тестирование развёртывания (Windows)
+# Тестирование развёртывания
 
-Набор скриптов проверяет установку, запуск и базовые команды ERGO MS на Windows. **Симметричного каталога `linux/lib/test/` пока нет** — интеграционные shell-тесты для Linux планируются отдельно.
-
-Для **быстрых unit-тестов** Python-модулей deployment (без Docker daemon) используйте:
+Единая точка — `ergoms system-test`. Unit-тесты не ставят службы ОС:
 
 ```cmd
+ergoms system-test --suite unit
+ergoms test_system
 ergoms deployment-test
 ```
 
-Альтернатива:
+`ergoms test_system` — то же, что unit-тесты deployment. Флаг `--with-scenario` добавляет изолированный spec (по умолчанию `host_sqlite_direct`) через `deployment-scenario-test` и тоже **не** регистрирует NSSM или systemd.
+
+Живые службы ОС (NSSM / systemd) — только изолированный сьют с отдельным префиксом, без очистки рабочего `virtual_env`:
+
+```cmd
+ergoms system-test --suite os-services
+```
+
+```cmd
+ergoms test_system --with-scenario
+ergoms test_system --with-scenario --spec host_sqlite_direct
+```
+
+Альтернатива без ergoms:
 
 ```cmd
 virtual_env\python\Scripts\python.exe -m unittest discover -s core/deployment/tests -p "test_*.py" -q
 ```
 
+На Linux путь к интерпретатору — `virtual_env/python/bin/python`.
+
 Документ для разработчиков deployment; конечному пользователю достаточно [`.docs/troubleshooting.md`](../../../../.docs/troubleshooting.md).
 
-## Быстрый запуск (интеграционные тесты Windows)
+## Проверка служб ОС (opt-in)
 
-Рекомендуемый способ — одна команда ergoms:
+`test.ps1` вызывает `ergoms system-test --suite os-services`: изолированный worktree, префикс `ergo_st_*`, `install-services` / `uninstall-services`. Рабочий `virtual_env` и службы `ergo_ms_*` не трогает. Нужны права администратора. На Linux тот же сьют (`ergoms system-test --suite os-services`).
 
-```cmd
-ergoms test_system
-```
+Запуск оркестратора напрямую (Windows):
 
-Альтернатива — запуск оркестратора напрямую (только Windows):
-
-- **Windows** (из корня репозитория): `.\core\deployment\windows\lib\test\test.ps1` — нужен префикс `.\`, иначе PowerShell не выполнит скрипт по относительному пути.
+- Из корня репозитория: `.\core\deployment\windows\lib\test\test.ps1` — нужен префикс `.\`, иначе PowerShell не выполнит скрипт по относительному пути.
 
 Весь вывод дублируется в **`logs/test.log`** в корне проекта.
 
-## Из чего состоят тесты
+## Из чего состоят Windows-интеграционные тесты
 
-### lib (`lib.sh` / `lib.ps1`)
+### lib (`lib.ps1`)
 
-Общая библиотека: логирование (`log`, `step`), запуск задач из `.vscode/tasks.json` (`run_task` / `Run-Task`), проверка Celery (`celery inspect ping`, `show_next_tasks`), остановка процессов перед прогоном (`stop_all_ergoms`).
+Общая библиотека: логирование (`log`, `step`), запуск задач из `.vscode/tasks.json` (`Run-Task`), проверка Celery (`celery inspect ping`, `show_next_tasks`), остановка процессов перед прогоном (`stop_all_ergoms`).
 
 ### install_test
 
@@ -48,7 +59,7 @@ ergoms test_system
 
 Проверяет отдельные команды: миграции (`ergoms db-makemigrations`, `ergoms db-migrate`), `ergoms clean`, просмотр журналов (`ergoms logs ergo_ms_api_dev 10`).
 
-### test (`test.sh` / `test.ps1`)
+### test (`test.ps1`)
 
 Оркестратор: по очереди вызывает install, run, commands и остальные этапы.
 

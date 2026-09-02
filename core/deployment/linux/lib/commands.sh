@@ -183,6 +183,53 @@ _should_run_on_this_platform() {
   return 0
 }
 
+_split_composite_command() {
+  local def="$1"
+  _ERGOMS_COMPOSITE_PARTS=()
+  local buf="" quote="" escaped=0
+  local i=0
+  local len=${#def}
+  local ch
+  while (( i < len )); do
+    ch="${def:i:1}"
+    if [[ -n "$quote" ]]; then
+      buf+="$ch"
+      if (( escaped )); then
+        escaped=0
+      elif [[ "$ch" == '\' ]]; then
+        escaped=1
+      elif [[ "$ch" == "$quote" ]]; then
+        quote=""
+      fi
+      ((i++)) || true
+      continue
+    fi
+    if [[ "$ch" == '"' || "$ch" == "'" ]]; then
+      quote="$ch"
+      buf+="$ch"
+      ((i++)) || true
+      continue
+    fi
+    if [[ "${def:i:2}" == "&&" ]]; then
+      local part
+      part="$(_ergoms_trim "$buf")"
+      if [[ -n "$part" ]]; then
+        _ERGOMS_COMPOSITE_PARTS+=("$part")
+      fi
+      buf=""
+      ((i+=2)) || true
+      continue
+    fi
+    buf+="$ch"
+    ((i++)) || true
+  done
+  local tail
+  tail="$(_ergoms_trim "$buf")"
+  if [[ -n "$tail" ]]; then
+    _ERGOMS_COMPOSITE_PARTS+=("$tail")
+  fi
+}
+
 _suggest_conf_commands() {
   local query="${1,,}"
   local query_alt="${query//_/-}"
@@ -235,8 +282,9 @@ invoke_custom_command() {
   
   # Check if it's a composite command (contains &&)
   if [[ "$command_def" == *"&&"* ]]; then
-    IFS='|' read -ra sub_cmds <<< "${command_def// && /|}"
-    
+    _split_composite_command "$command_def"
+    local sub_cmds=("${_ERGOMS_COMPOSITE_PARTS[@]}")
+
     for sub_cmd in "${sub_cmds[@]}"; do
       sub_cmd="$(_ergoms_trim "$sub_cmd")"
       if ! _should_run_on_this_platform "$sub_cmd"; then

@@ -1,0 +1,40 @@
+# ERGO MS — Meilisearch (профиль meilisearch)
+# Запуск: ergoms docker-up с DOCKER_PROFILE_MEILISEARCH=true
+
+services:
+  meilisearch:
+    image: ${DOCKER_MEILI_IMAGE:-getmeili/meilisearch:v1.43.1}
+    profiles: ["meilisearch"]
+    environment:
+      MEILI_ENV: ${MEILI_ENV:-development}
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meili_data:/meili_data
+    networks:
+      - ergo_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:7700/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    depends_on:
+      meilisearch:
+        condition: service_healthy
+        required: false
+    environment:
+      MEILI_HOST: http://meilisearch:7700
+
+  celery-worker-all:
+    depends_on:
+      meilisearch:
+        condition: service_healthy
+        required: false
+    environment:
+      MEILI_HOST: http://meilisearch:7700
+
+volumes:
+  meili_data:

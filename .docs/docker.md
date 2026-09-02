@@ -1,6 +1,6 @@
 # Docker Compose
 
-ERGO MS можно запустить в контейнерах через **Docker Compose** — альтернатива portable Redis/nginx на хосте и отдельным процессам `ergoms dev`. Команды — префикс **`ergoms docker-*`**; конфигурация — переменные **`DOCKER_*`** в корневом `.env` и параметры **`databases.yaml`**.
+ERGO MS можно запустить в контейнерах через **Docker Compose** — альтернатива portable Redis/nginx на хосте и отдельным процессам `ergoms dev`. Команды — префикс **`ergoms docker-*`**; конфигурация — переменные **`DOCKER_*`** в [`env/docker.env`](../env/docker.env.example) и параметры **`databases.yaml`**. Режим стека — `ERGO_RUNTIME=docker` в корневом `.env`.
 
 Справочник команд — [cli.md](cli.md#docker-compose). Устройство скриптов — [`core/deployment/logic.md`](../core/deployment/logic.md#docker-compose). Правила для агента — [`.cursor/rules/docker.mdc`](../.cursor/rules/docker.mdc).
 
@@ -16,11 +16,10 @@ ERGO MS можно запустить в контейнерах через **Doc
 
 ## Первый запуск
 
-1. Скопируйте `.env` из `.env.example`, если файла ещё нет. В секции **Docker** задайте:
+1. Скопируйте `.env` из `.env.example` и `env/docker.env` из [`env/docker.env.example`](../env/docker.env.example), если файлов ещё нет. В корневом `.env` задайте `ERGO_RUNTIME=docker`. В `env/docker.env` задайте:
 
-   - `DOCKER_ENABLED=true`
    - `DOCKER_MODE=dev` (разработка) или `prod` (запуск как на сервере)
-   - при необходимости profiles: `DOCKER_PROFILE_POSTGRES`, `DOCKER_PROFILE_NGINX`, `DOCKER_PROFILE_JUPYTER`
+   - при необходимости profiles: `DOCKER_PROFILE_POSTGRES`, `DOCKER_PROFILE_NGINX`, `DOCKER_PROFILE_JUPYTER`, `DOCKER_PROFILE_MEILISEARCH` (Meili по умолчанию из `ERGO_SEARCH_ENABLED`)
 
 2. Проверьте **`databases.yaml`**. При `DOCKER_DATABASE=container` (по умолчанию) хост `localhost` / `127.0.0.1` в yaml автоматически заменяется на имя сервиса `postgres` внутри сети compose. Параметры пользователя, пароля и имени БД берутся из секции `default`.
 
@@ -83,7 +82,8 @@ ERGO MS можно запустить в контейнерах через **Doc
 |-----------------|------|---------|
 | `postgres` | `docker-compose.postgres.yml` | PostgreSQL 16 |
 | `nginx` | `docker-compose.nginx.yml` | nginx (единая точка входа) |
-| `jupyter` | `docker-compose.jupyter.yml` | JupyterLab |
+| `jupyter` | `docker-compose.jupyter.yml` | JupyterLab; порт на хост — `127.0.0.1:API_JUPYTER_BIND_PORT` |
+| `meilisearch` | `docker-compose.meilisearch.yml` | Meilisearch (BM25); публикация на хост — `127.0.0.1` + `DOCKER_MEILI_PUBLISH_PORT` |
 | `dev` | `docker-compose.dev.yml` | `client` (Vite) |
 | `prod` | `docker-compose.prod.yml` | `client-build` |
 | workers | `docker-compose.workers.generated.yml` | Celery worker'ы из `celery_workers.yaml` |
@@ -118,11 +118,12 @@ ergoms docker-gen-workers
 - **`docker-install-deps`** — Python-зависимости (poetry) внутри контейнера `api`
 - **`docker-install-npm`** — npm-зависимости внутри стека Docker
 - **`docker-gen-workers`** — пересоздать `docker-compose.workers.generated.yml` после правки `celery_workers.yaml`
+- **`docker-gen-modules`** — сервисы API и worker вынесенных модулей; Beat модуля добавляется, если в модуле есть `celery_beat_config.py`
 - **`docker-shell-api`** — интерактивная shell в контейнере API; внутри доступны `ergoms api …` и `ergoms media_api …` (тонкая обёртка, не полный CLI хоста)
 
 Миграции и Django-команды в контейнере — через `ergoms docker-migrate` или `ergoms docker-shell-api` (например `ergoms api createsuperuser`), не `python manage.py` на хосте.
 
-Если интерактивный `createsuperuser` в Windows-терминале падает с ошибкой кодировки UTF-8, создайте пользователя без запросов:
+Если интерактивный `createsuperuser` в Windows-терминале падает с ошибкой кодировки UTF-8, создайте пользователя без запросов. `DJANGO_SUPERUSER_PASSWORD` обязан соответствовать политике `API_PASSWORD_*` из `.env`; слабый пароль команда отклонит и в `--noinput`.
 
 ```bash
 export DJANGO_SUPERUSER_USERNAME=admin
@@ -133,11 +134,11 @@ ergoms api createsuperuser --noinput
 
 ## Переменные Docker
 
-Секция в [`.env.example`](../.env.example) (строки `DOCKER_*`). Основные:
+Ключи Compose — [`env/docker.env.example`](../env/docker.env.example). Режим стека — `ERGO_RUNTIME=docker` в [`.env.example`](../.env.example) (legacy-override: `DOCKER_ENABLED`). Основные:
 
 | Переменная | По умолчанию | Назначение |
 |------------|--------------|------------|
-| `DOCKER_ENABLED` | `false` | Режим Docker (effective env в `.compose.env`) |
+| `DOCKER_ENABLED` | (legacy) | Явный override поверх `ERGO_RUNTIME`; effective env в `.compose.env` |
 | `DOCKER_MODE` | `dev` | `dev` или `prod` |
 | `DOCKER_DATABASE` | `container` | `container` — PostgreSQL в compose; `host` — БД на хосте |
 | `DOCKER_PROFILE_POSTGRES` | `true` | Поднять PostgreSQL в контейнере |
@@ -148,7 +149,7 @@ ergoms api createsuperuser --noinput
 | `DOCKER_VOLUME_MEDIA` | `bind` | `bind` — каталог `media/` проекта |
 | `DOCKER_VOLUME_CELERY_CACHE` | `named` | `named` — том Docker; `bind` — `virtual_env/cache` на хосте |
 | `DOCKER_BUILD_CACHE` | `true` | BuildKit при `ergoms docker-build` |
-| `DOCKER_DEPS_CACHE` | `internal` | `internal` / `project` (ещё `virtual_env/docker-cache/`) / `off` — кэш загрузок Poetry/npm |
+| `DOCKER_DEPS_CACHE` | `internal` | `internal` / `project` (ещё `virtual_env/cache/docker-cache/`) / `off` — кэш загрузок Poetry/npm |
 | `DOCKER_BUILD_POLICY` | `if-missing` | `if-missing` — пропуск build в `docker-init`, если образы есть; `always` — всегда |
 | `DOCKER_NPM_INSTALL` | `smart` | `smart` — npm только при изменении lock/package.json; `always` — каждый старт client |
 
@@ -189,7 +190,7 @@ ergoms api createsuperuser --noinput
 | Режим `DOCKER_DEPS_CACHE` | Поведение |
 |---------------------------|-----------|
 | `internal` (по умолчанию) | BuildKit cache mount (wheel/npm внутри Docker) |
-| `project` | дополнительно каталог `virtual_env/docker-cache/` |
+| `project` | дополнительно каталог `virtual_env/cache/docker-cache/` |
 | `off` | без cache mount — каждый build качает пакеты заново |
 
 **Скачать всё заново:**
@@ -205,14 +206,14 @@ ergoms docker-build -- --no-cache
 ergoms docker-init
 ```
 
-Очистка: удалите `virtual_env/docker-cache/`, тома `*_poetry_venv`, `*_node_modules` или выполните `ergoms docker-clean --yes`. Internal BuildKit-кэш — `docker builder prune` (вручную).
+Очистка: удалите `virtual_env/cache/docker-cache/`, тома `*_poetry_venv`, `*_node_modules` или выполните `ergoms docker-clean --yes`. Internal BuildKit-кэш — `docker builder prune` (вручную).
 
 ## PostgreSQL в контейнере
 
 При `DOCKER_DATABASE=container` и `DOCKER_PROFILE_POSTGRES=true`:
 
 1. Параметры контейнера (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) берутся из `databases.yaml` → `default`
-2. Порт на хост — только если свободен (`port` из `default`, часто 5432). Если занят (системный PostgreSQL и т.п.), публикация пропускается; контейнеры ходят по сети compose на `postgres:5432`. Принудительно: `DOCKER_POSTGRES_PUBLISH_PORT` (`none` или другой порт)
+2. Порт на хост — только если свободен (`port` из `default`, часто 5432), и **только на 127.0.0.1** (не на все интерфейсы). Если занят (системный PostgreSQL и т.п.), публикация пропускается; контейнеры ходят по сети compose на `postgres:5432`. Принудительно: `DOCKER_POSTGRES_PUBLISH_PORT` (`none` или другой порт)
 3. Дополнительные БД для Celery (`celery`, `celery_worker`, `celery_beat`) создаются скриптом `02-celery-databases.sql` при первой инициализации тома
 
 Перед сменой пароля или имени БД в уже инициализированном томе может понадобиться `ergoms docker-down` с удалением volume `*_postgres_data` — **это удалит данные**.
@@ -248,6 +249,7 @@ ergoms docker-init
 | Порт занят | `API_PORT`, `CLIENT_PORT`, `NGINX_LISTEN_PORT` в `.env`; другой экземпляр ERGO MS или portable-службы |
 | Нет worker'ов | `celery_workers.yaml` на месте; `ergoms docker-gen-workers` и `ergoms docker-restart` |
 | nginx 502 в prod | Выполнен `client-build`; есть `core/client/dist` |
+| Пустой экран / пустая консоль за nginx | [troubleshooting.md](troubleshooting.md#пустой-экран-за-nginx) |
 | Конфликт Redis | В Docker `REDIS_HOST` переопределяется на `redis`; не смешивайте с `ergoms install-redis` на том же порту |
 
 ## Docker и локальная разработка без контейнеров

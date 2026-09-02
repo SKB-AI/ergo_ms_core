@@ -1,13 +1,13 @@
 ---
 description: Локализация UI и API — vue-i18n, Django gettext, package.nls расширений VS Code, язык профиля
 globs:
-  - core/client/src/i18n/**
-  - core/client/src/**/*.vue
-  - core/client/src/**/*.js
-  - modules/*/client/js/locales.js
-  - core/api/locale/**
-  - core/api/src/config/settings/localization.py
-  - .vscode/extensions/**
+  - "core/client/src/i18n/**"
+  - "**/locales.js"
+  - "core/api/locale/**"
+  - "core/api/src/config/settings/localization.py"
+  - ".vscode/extensions/**/*.nls.json"
+  - ".vscode/extensions/**/*.nls.*.json"
+  - "**/locales/**/*.yaml"
 alwaysApply: false
 ---
 

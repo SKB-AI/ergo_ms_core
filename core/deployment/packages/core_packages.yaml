@@ -58,3 +58,13 @@ packages:
     installer: scripts/install_postgres.py
     marker_windows: VERSION
     marker_linux: VERSION
+
+  meilisearch:
+    kind: custom
+    dest: meilisearch
+    version: "1.43.1"
+    installer: scripts/install_meilisearch.py
+    installer_args: [install]
+    pass_root: true
+    marker_windows: meilisearch.exe
+    marker_linux: meilisearch

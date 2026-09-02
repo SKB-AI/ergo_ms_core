@@ -1,15 +1,20 @@
-# syntax=docker/dockerfile:1.4
 # ERGO MS — Node-образ для клиента (dev Vite / prod build)
+# Без # syntax=docker/dockerfile:… — иначе BuildKit тянет frontend с Hub при каждой сборке.
 #
 # npm-зависимости не ставятся при сборке образа: в compose проект bind-mount'ится,
 # node_modules — в именованных томах (virtual_env/npm/node_modules),
 # установка — ensure_npm_deps.sh → npm run install:all
 # (тот же сценарий, что ergoms setup-full).
-FROM node:20-bookworm-slim
+ARG NODE_BASE=node:20-bookworm-slim
+FROM ${NODE_BASE}
 
 # npm 10.8.x в базовом образе на Docker Desktop (Windows) может зависать на reify;
-# 10.9.2+ содержит исправление (npm/cli#7868).
-RUN npm install -g npm@10.9.2 \
+# 10.9.2+ содержит исправление (npm/cli#7868). Уже стоящая 10.9+ не ходит в registry.
+RUN current="$(npm -v 2>/dev/null || echo 0.0.0)" \
+    && needed="10.9.2" \
+    && if [ "$(printf '%s\n%s\n' "$needed" "$current" | sort -V | head -n1)" != "$needed" ]; then \
+         npm install -g "npm@${needed}"; \
+       fi \
     && npm config set update-notifier false \
     && npm config set audit false \
     && npm config set fund false

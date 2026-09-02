@@ -29,6 +29,12 @@ from render_common import (  # noqa: E402
     apply_template_replacements,
     build_host_nginx_shared_replacements,
 )
+from security.csp_policy import (  # noqa: E402
+    build_security_headers_nginx,
+    read_federation_importmap_hashes,
+    resolve_csp_mode,
+    substitute_security_headers_includes,
+)
 from tls_config import webroot_path  # noqa: E402
 
 
@@ -61,6 +67,7 @@ def render_template(
         ssl_key = '/etc/ssl/private/ssl-cert-snakeoil.key'
 
     content = template_path.read_text(encoding='utf-8')
+    csp_mode = resolve_csp_mode(values)
     maintenance_snippet_path = DEPLOYMENT_NGINX / 'snippets' / 'maintenance.conf'
     maintenance_snippet = ''
     if maintenance_snippet_path.is_file():
@@ -98,7 +105,14 @@ def render_template(
         content,
         flags=re.MULTILINE,
     )
-    return apply_template_replacements(content, replacements)
+    rendered = apply_template_replacements(content, replacements)
+    return substitute_security_headers_includes(
+        rendered,
+        build_security_headers_nginx(
+            csp_mode,
+            extra_script_hashes=read_federation_importmap_hashes(root),
+        ),
+    )
 
 
 def main() -> int:

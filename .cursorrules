@@ -1,8 +1,80 @@
-When Cursor auto-generates a Git commit message for this repository:
+When Cursor auto-generates a Git commit message for this repository (✨ Generate commit message) or when the agent writes a commit message here:
 
 - Always write the commit message in Russian (subject and body).
 - Use Conventional Commits prefixes in English: feat, fix, docs, chore, refactor, test, perf, ci, build, style.
-- Format: `<type>: <краткое описание на русском>`.
-- Keep the subject to a single concise line (preferably under ~72 characters).
-- Only add a short body if the change is non-obvious; never restate the diff line by line.
-- Prefer the style of recent commits in this repository.
+- Format: `<type>: <описание на русском>` — only the type prefix, then a colon and description.
+- Do NOT add a scope in parentheses after the type: no `feat(video_analysis):`, `fix(api):`, `refactor(client):`, module names, `api`/`client`/`server`, or any path segment between type and colon.
+
+Length:
+
+- The whole message is **1–3 complete sentences**, no more. Subject is the first sentence. Body is at most two more.
+- Skip the body when one sentence already names what changed. Do not pad to three.
+
+How to judge what happened (do this before choosing type or wording):
+
+- Read the **diff hunks**, not the file list. Many files in one commit are usually one existing flow touched in several places, not a new product.
+- Ask: did the user gain a capability that did not exist, or did something that already existed become more complete, clearer, faster, or less wrong?
+- Number of files is not a new feature. Spreading one improvement across templates, tests, and config is still that improvement.
+- Do not invent a subsystem, “платформенный контракт”, or architecture story unless the hunks actually introduce one. Stay at changelog / patch-note height: what a reader of git log needs to know.
+- Split into two stories only when the diff contains two **unrelated** changes, not because two directories were touched. Prefer one honest sentence over two inflated ones.
+
+Choose the type by the nature of the change, not by how impressive the file list looks:
+
+- `feat` — only if after this commit the system can do something that previously did not exist (new screen, new command, new API, new user-facing capability).
+- Existing screen, API, command, or rule that was completed, aligned, tightened, or made consistent → **not** `feat`. Use `fix` if behavior was wrong or incomplete, `refactor` if structure moved without changing behavior, `perf` / `style` / `docs` / `chore` / `test` / `ci` / `build` when that is the real story.
+- Do not upgrade a polish pass or a multi-file consistency edit into `feat`.
+
+What to write (patch-note style):
+
+- Write as a short changelog entry for someone who will not open the diff: name the actual behavior that changed (the page, the limit, the command, the rule).
+- Subject: one concrete sentence. Prefer “стало так” over “добавлена новая система”.
+- Body: only an anchor the subject cannot hold (`TIME_ZONE`, `/upload/`, `--cleanup-users`) or a second real consequence. Not a file dump.
+- Docs and Cursor rules: say what the instruction became, not that “правила обновлены”.
+- Do not copy the vague style of older auto-generated commits (`Добавлены новые настройки…`, `Добавлены улучшения…`, `Обновлены правила…`). Name what improved.
+- Do not dump files. Do not write filler (`улучшения`, `доработки`, `рефакторинг` without saying what already existed and what is now different).
+
+Language: plain Russian, full sentences. No Anglicisms when a Russian word exists. Keep identifiers as in the diff.
+
+Good (one existing flow, several files, not a new feature):
+```
+refactor: Выбор даты на страницах анализа видео идёт через общий DatePicker.
+
+Фильтр по дате загрузки и поле в форме больше не расходятся по разным виджетам.
+```
+
+Good (real new capability):
+```
+feat: Загрузки обычного пользователя и администратора больше не делят один лимит.
+
+Частоту считают одно место для media_api и nginx. Зона nginx на /upload/ берёт потолок администратора.
+```
+
+Good (small change stays one sentence):
+```
+fix: На странице анализа видео фильтр учитывает дату загрузки, а не только дату съёмки.
+```
+
+Bad (multi-file improvement inflated to a new feature):
+```
+feat: Добавлена новая система фильтрации и выбора даты на страницах анализа видео.
+```
+
+Bad (architecture story the hunks do not support):
+```
+feat: Единый контракт лимитов загрузки вынесен в платформенный слой media_api и nginx.
+```
+
+Bad (file-scale: counts files, misses what changed):
+```
+feat: Обновлены render_common.py, шаблоны nginx, профили безопасности и тесты загрузки.
+```
+
+Bad (inventory of keys):
+```
+feat: Добавлены MEDIA_API_UPLOAD_RATE_ADMIN, upload_rate.py и правки profiles.yaml.
+```
+
+Bad (empty label):
+```
+feat: Обновление интерфейса страниц анализа видео с новым макетом и стилями.
+```

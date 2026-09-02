@@ -1,10 +1,5 @@
 ---
 description: Производительность клиента Vue — lazy-чанки, async-модалки, параллельные API, prefetch меню
-globs:
-  - "core/client/**/*.vue"
-  - "core/client/**/*.js"
-  - "modules/**/client/**/*.vue"
-  - "modules/**/client/**/*.js"
 alwaysApply: false
 ---
 
@@ -22,8 +17,9 @@ alwaysApply: false
 - Независимые запросы на mount — `Promise.all`, не цепочка `await`
 - Hover/focus пункта меню / breadcrumbs / auth-ссылок — `prefetchRouteByName` (`@/js/utils/prefetchRoute.js`)
 - i18n — только активный locale (+ fallback) на старте; остальные через `ensureLocaleLoaded` / `setAppLocale`
-- Иконки меню — per-icon через `lucideIconLoader` (не `import('lucide-vue-next')` barrel)
+- Иконки меню и декларативные UI — per-icon через `LucideIcon` / `lucideIconLoader` (не barrel); см. [`icons.mdc`](icons.mdc)
 - Post-boot (client_monitor, theme manifests, syncSiteTheme) — `requestIdleCallback` / idle после mount
+- Federated remotes — грузить **параллельно**; `initEndpoints` не ждёт remotes (сессия идёт сразу). `initRouter` / меню — после remotes. CSS remote подключать через `ensureRemoteStyles` на маршруте модуля, не на каждой странице. Hashed `/remotes/*/chunks|assets/` кэширует nginx, `remoteEntry.js` — нет. Lucide — `ergo-shared/lucide-icons`, не свой glob в каждом remote.
 - Индикация загрузки списков — [`loading-content-area.mdc`](loading-content-area.mdc), не свой overlay
 
 ## Обязательно
@@ -71,7 +67,7 @@ import en from './locales/en/index.js'
 import fr from './locales/fr/index.js'
 
 // BAD — весь Lucide при preload меню
-await import('lucide-vue-next')
+await import('@lucide/vue')
 ```
 
 ```js
@@ -119,4 +115,5 @@ await preloadLucideIconNames(['Home', 'Settings'])
 | Загрузка списков | [`loading-content-area.mdc`](loading-content-area.mdc) |
 | Модалки | [`modal-center.mdc`](modal-center.mdc) |
 | Меню | [`menu.mdc`](menu.mdc) |
+| Иконки Lucide | [`icons.mdc`](icons.mdc) |
 | Диагностика «старый dist» | [`diagnose-before-code.mdc`](diagnose-before-code.mdc) |

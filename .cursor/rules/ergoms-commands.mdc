@@ -63,7 +63,7 @@ alwaysApply: false
 
 ## Команды вне commands.conf
 
-**install-cli**, **help**, маршрутизация — в `ergo_ms.ps1` / `ergo_ms.sh`. **nginx**, **redis**, **TLS**, службы (`install-services`, `start`, `stop`, …) и **setup-full** делегируют в [`lifecycle/runner.py`](../../core/deployment/lifecycle/runner.py) (рецепты `nginx-*`, `redis-*`, `tls-*`, `service-*`, `setup-full`). На Linux `sudo` — внутри runner ([`privilege.py`](../../core/deployment/lifecycle/host/privilege.py)), не в VS Code tasks.
+**install-cli**, **help**, маршрутизация — в `ergo_ms.ps1` / `ergo_ms.sh`. На Linux `install-cli` ставит симлинк `/usr/local/bin/ergoms` на `core/deployment/bin/ergoms` (для `sudo ergoms`); `uninstall-cli` снимает только эту ссылку, если она указывает на текущий проект. **nginx**, **redis**, **TLS**, службы (`install-services`, `start`, `stop`, …) и **setup-full** делегируют в [`lifecycle/runner.py`](../../core/deployment/lifecycle/runner.py) (рецепты `nginx-*`, `redis-*`, `tls-*`, `service-*`, `setup-full`). На Linux `sudo` — внутри runner ([`privilege.py`](../../core/deployment/lifecycle/host/privilege.py)), не в VS Code tasks.
 
 Описания для `ergoms help` — в `help.manifest.yaml`. Подробности — [`deployment-infra.mdc`](deployment-infra.mdc), [`core/deployment/logic.md`](../../core/deployment/logic.md).
 

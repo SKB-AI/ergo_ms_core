@@ -3,70 +3,36 @@ description: Команды проекта — только ergoms, не manage.
 alwaysApply: true
 priority: critical
 ---
+
 # Команды — только через ergoms
 
-Любые операции (миграции, запуск, зависимости, сборка, Celery, статика) — **только** `ergoms`. В ответах и документации не предлагай `python manage.py`, `pip`, `poetry`, `npm` как основной способ.
-
-Формат команд и конфиг — в [`ergoms-commands.mdc`](ergoms-commands.mdc). Справочник для людей — [`.docs/cli.md`](../../.docs/cli.md).
-
-## Частые команды
+Миграции, запуск, зависимости, сборка, Celery, статика — **только** `ergoms`. Не предлагай `python manage.py`, `pip`, `poetry`, `npm` как основной способ. Полный список — [`.docs/cli.md`](../../.docs/cli.md); формат — [`ergoms-commands.mdc`](ergoms-commands.mdc).
 
 | Задача | Команда |
 |--------|---------|
-| Миграции создать | `ergoms db-makemigrations` |
-| Миграции применить | `ergoms db-migrate` |
-| Создать и применить | `ergoms migrate-all` |
-| API (разработка) | `ergoms dev` |
-| Клиент (разработка) | `ergoms start-client` |
-| Статика Django | `ergoms collectstatic` |
+| Настройка | `ergoms setup` |
+| Миграции | `ergoms migrate-all` / `db-migrate` / `db-makemigrations` |
+| API / клиент | `ergoms dev` / `start-client` |
 | Сборка клиента | `ergoms client-build` |
-| Celery worker | `ergoms start-worker` |
-| Celery beat | `ergoms start-beat` |
-| Python-зависимости | `ergoms python-install` |
-| npm-зависимости | `ergoms npm install` или `ergoms npm run install:all` |
-| Всё сразу (Python + npm + migrate) | `ergoms install-deps` |
-| Скачать GeoIP базу (MMDB) | `ergoms geoip-download` |
-| Backfill city/country сессий | `ergoms geoip-backfill` |
-| Redis (опционально) | `ergoms install-redis`, `ergoms test-redis` |
-| nginx (опционально) | `ergoms install-nginx`, `ergoms reload-nginx` |
-| Docker: первый запуск | `ergoms docker-init` |
-| Docker: полная очистка стека | `ergoms docker-clean` |
-| Docker: миграции | `ergoms docker-migrate` |
-| Docker: стек | `ergoms docker-up`, `ergoms docker-down`, `ergoms docker-dev`, `ergoms docker-prod` |
-| Любая команда Django | `ergoms api <имя_команды> [аргументы]` |
-| Первичная настройка | `ergoms setup` |
+| Celery | `ergoms start-worker` / `start-beat` |
+| Зависимости | `ergoms python-install`, `ergoms npm install` |
+| Расширения IDE | `ergoms install-extensions` |
+| Django | `ergoms api <команда>` |
 | Справка | `ergoms help` |
 
-Модульные команды: `ergoms <имя_модуля>:<команда>`.
+Модуль: `ergoms <имя>:<команда>`. Microservice: `ergoms start-worker --module=<name>`, `ergoms start-module` — [`modularization.mdc`](modularization.mdc). Правка запуска/сервиса — чеклист «Параллельные сценарии» в [`docker.mdc`](docker.mdc).
 
-Команды **nginx**, **redis**, **TLS** и управление **службами ОС** — встроены в `ergo_ms.ps1` / `ergo_ms.sh`, не в `commands.conf`. **Docker** — в `commands.conf` (`docker-*`). См. [`ergoms-commands.mdc`](ergoms-commands.mdc), [`docker.mdc`](docker.mdc).
-
-При правках **запуска**, **развёртывания** или **нового сервиса** — сверяйся с чеклистом «Параллельные сценарии» в [`docker.mdc`](docker.mdc): хост и Docker Compose должны оставаться согласованными.
-
-## Запрещено в подсказках пользователю
+## Запрещено
 
 - `python manage.py …`, `pip install`, `poetry install`, `npm install` без оговорки «через ergoms»
-- Править `manage.py`, чтобы обходить ergoms
+- Править `manage.py`, чтобы обходить ergoms (правка настроек Django — допустима; запуск всё равно через ergoms)
 
-## Исключения
-
-- Правка `manage.py` для настроек Django — допустима, но инструкции по запуску всё равно через ergoms
-- Низкоуровневые CI-скрипты могут вызывать инструменты напрямую; пользовательская документация — нет
-
-## Язык сообщений ergoms
-
-- CLI ergoms — **overlay-локализация**: русский source в `locales/ru/cli_messages.yaml` и основных help-YAML; переводы в `core/deployment/locales/<lang>/` и `modules/<имя>/locales/<lang>/`. Язык: `ERGO_CLI_LANGUAGE` → OS locale → `ru` ([`cli_locale.py`](../../core/deployment/cli_locale.py)); `DEFAULT_LANGUAGE` для CLI не используется.
-- Метки статуса — только `[OK]`, `[ERROR]`, `[WARNING]`, `[SKIP]`, `[INFO]` (английский, не переводить).
-- Доступ к строкам: `t('key')`, `Write-ErgomsMessage -Key`, `format_console` + [`console_tags.py`](../../core/deployment/console_tags.py).
-- Django management-команды проекта: сообщения в `self.stdout.write` / `self.stderr.write` — на русском (отдельно от CLI ergoms).
-- Сырой вывод Django, npm, Poetry и traceback **не переводить**.
-- Подробности — [`console-output.mdc`](console-output.mdc), справка help — [`ergoms-module-help.mdc`](ergoms-module-help.mdc).
+Метки CLI — `[OK]` / `[ERROR]` / …; текст — `t('key')`. Подробности — [`console-output.mdc`](console-output.mdc).
 
 ## Связанные правила
 
 | Тема | Файл |
 |------|------|
-| Метки и локализация CLI | [`console-output.mdc`](console-output.mdc) |
-| Формат commands.conf | [`ergoms-commands.mdc`](ergoms-commands.mdc) |
-| Справочник команд | [`.docs/cli.md`](../../.docs/cli.md) |
-| Python-окружение | [`virtual-env.mdc`](virtual-env.mdc) |
+| commands.conf | [`ergoms-commands.mdc`](ergoms-commands.mdc) |
+| Справочник | [`.docs/cli.md`](../../.docs/cli.md) |
+| venv | [`virtual-env.mdc`](virtual-env.mdc) |

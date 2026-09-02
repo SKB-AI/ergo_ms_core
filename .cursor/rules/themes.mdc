@@ -1,15 +1,12 @@
 ---
 description: Темы оформления — глобальные и модульные, theme-defaults.js, ModuleThemeScope, UI-токены, шрифты
 globs:
-  - "core/client/**/*.vue"
-  - "core/client/**/*.scss"
-  - "core/client/**/*.css"
-  - "core/client/**/*.html"
-  - "core/client/**/*.js"
-  - "modules/**/client/**/*.vue"
-  - "modules/**/client/**/*.scss"
-  - "modules/**/client/**/*.css"
-  - "modules/**/client/**/*.js"
+  - "**/theme-defaults.js"
+  - "**/theme-bootstrap.scss"
+  - "core/client/src/modules/themes/**"
+  - "core/client/src/scss/**"
+  - "**/*Theme*.vue"
+  - "**/*ThemeScope*"
 alwaysApply: false
 ---
 # Темы оформления

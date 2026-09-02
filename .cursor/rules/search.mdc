@@ -1,0 +1,82 @@
+---
+description: Централизованный поиск ERGO MS — Meilisearch BM25, core.search, useListSearch, search_indexes.py
+alwaysApply: false
+---
+# Централизованный поиск
+
+## Сервер
+
+- Движок: **Meilisearch** (BM25), portable: `ergoms install-meilisearch`, Docker profile `meilisearch`.
+- Django app: `core/api/src/core/search/` — `SearchService`, `search_queryset`, `search_index`, fallback.
+- Канонический query-параметр: **`q`** (alias `search` — legacy).
+- Пагинация: `page`, `page_size`; ответ `{ items, total, page, page_size }` (или доменные ключи + `total`).
+- Нормализация: `core.search.query` + раскладка EN↔RU (`keyboard_layout.py`).
+- Переиндексация: `ergoms search-reindex` / `ergoms api search_reindex [--index=uid]`.
+- Режим: `ERGO_SEARCH_ENABLED` в корневом `.env`; хост/ключ — `env/search.env` (`MEILI_*`).
+- `ERGO_SEARCH_ENABLED=false` или недоступный Meili → fallback (icontains/trigram), `[WARNING]` в логах API.
+
+### List-view в ядре
+
+```python
+from src.core.search.mixins import parse_search_pagination
+from src.core.search.service import search_queryset
+
+page, page_size, q = parse_search_pagination(request)
+qs, result = search_queryset('core_users', q, queryset, page=page, page_size=page_size)
+```
+
+`apply_user_search` — тонкий facade для обратной совместимости; новый код — `search_queryset`.
+
+### Индексы модулей
+
+Hook: `modules/<name>/api/search_indexes.py`:
+
+```python
+SEARCH_INDEXES = [
+    {
+        'uid': '<name>_entities',
+        'searchable_attributes': ('title',),
+        'get_queryset': lambda: MyModel.objects.all(),
+        'build_document': lambda obj: {'id': str(obj.pk), 'title': obj.title},
+    },
+]
+```
+
+Discovery — `core.search.discovery` (как `permission_catalog.py`). **Не** импортируй модели модулей в ядре.
+
+UID индекса Meilisearch: только `[A-Za-z0-9_-]` (без точек), например `core_users`, `<name>_entities`.
+
+## Клиент
+
+| Файл | Назначение |
+|------|------------|
+| `useListSearch.js` | `q` + `page` в route query, debounce |
+| `useServerSearchList.js` | watch → fetch с `q`, `page`, `page_size` |
+| `searchQuery.js` | `matchSearchQuery` для статических списков (без API) |
+
+`SearchInput` + `useListSearch` / `useServerSearchList` — эталон для admin list-экранов.
+
+```javascript
+// BAD — клиентский filter по БД-списку
+rows.filter(r => r.name.includes(q))
+
+// GOOD — серверный BM25
+useServerSearchList({ fetchItems: (params) => getRoleGroups(params) })
+```
+
+Статические списки (маршруты, темы, навигация настроек) — `matchSearchQuery(haystack, query)` из `searchQuery.js`.
+
+## Запрещено
+
+- Прямой trigram/icontains в view минуя `SearchService` / fallback
+- Hardcoded имена модулей в `core.search` (только hook discovery)
+- Master key Meilisearch в клиенте
+
+## Связанные правила
+
+| Тема | Файл |
+|------|------|
+| Legacy user_search facade | [`user_search.mdc`](user_search.mdc) |
+| SearchInput UI | [`search-input.mdc`](search-input.mdc) |
+| CLI Meilisearch | [`.docs/cli.md`](../../.docs/cli.md) |
+| API код | [`api_code.mdc`](api_code.mdc) |

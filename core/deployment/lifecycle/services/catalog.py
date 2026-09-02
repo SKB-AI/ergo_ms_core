@@ -10,13 +10,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parents[2] / 'scripts'
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from service_names import (  # noqa: E402
-    API_DEV,
-    CELERY_BEAT,
-    CLIENT_DEV,
-    MEDIA_API,
-    celery_worker,
-)
+from service_names import ServiceNames, celery_worker  # noqa: E402
 
 CORE_SERVICE_IDS = ('api', 'client', 'media', 'beat')
 
@@ -29,10 +23,10 @@ class ServiceEntry:
     optional: bool = False
 
 
-def _load_workers(project_root: Path) -> list[ServiceEntry]:
+def _load_workers(project_root: Path, prefix: str | None = None) -> list[ServiceEntry]:
     path = project_root / 'celery_workers.yaml'
     if not path.is_file():
-        return [ServiceEntry('worker-all', celery_worker('all'), 'install-workers')]
+        return [ServiceEntry('worker-all', celery_worker('all', prefix), 'install-workers')]
     try:
         import yaml  # noqa: WPS433
 
@@ -43,25 +37,47 @@ def _load_workers(project_root: Path) -> list[ServiceEntry]:
             entries.append(
                 ServiceEntry(
                     f'worker-{key}',
-                    celery_worker(str(key)),
+                    celery_worker(str(key), prefix),
                     'install-workers',
                 )
             )
-        return entries or [ServiceEntry('worker-all', celery_worker('all'), 'install-workers')]
+        return entries or [ServiceEntry('worker-all', celery_worker('all', prefix), 'install-workers')]
     except Exception:
-        return [ServiceEntry('worker-all', celery_worker('all'), 'install-workers')]
+        return [ServiceEntry('worker-all', celery_worker('all', prefix), 'install-workers')]
 
 
-def list_core_services() -> list[ServiceEntry]:
+def list_core_services(prefix: str | None = None) -> list[ServiceEntry]:
+    names = ServiceNames(prefix)
     return [
-        ServiceEntry('api', API_DEV, 'install-api'),
-        ServiceEntry('client', CLIENT_DEV, 'install-client', optional=True),
-        ServiceEntry('media', MEDIA_API, 'install-media'),
-        ServiceEntry('beat', CELERY_BEAT, 'install-beat'),
+        ServiceEntry('api', names.api_dev, 'install-api'),
+        ServiceEntry('client', names.client_dev, 'install-client', optional=True),
+        ServiceEntry('media', names.media_api, 'install-media'),
+        ServiceEntry('beat', names.celery_beat, 'install-beat'),
     ]
 
 
 def resolve_service_catalog(project_root: Path, disabled_modules: set[str]) -> list[ServiceEntry]:
-    catalog = list_core_services()
-    catalog.extend(_load_workers(project_root))
+    from lifecycle.host_profile import (  # noqa: WPS433
+        SERVICE_API,
+        SERVICE_BEAT,
+        SERVICE_CLIENT,
+        SERVICE_MEDIA,
+        SERVICE_YAML_WORKERS,
+        resolve_host_profile_from_root,
+    )
+
+    profile = resolve_host_profile_from_root(project_root)
+    id_map = {
+        'api': SERVICE_API,
+        'client': SERVICE_CLIENT,
+        'media': SERVICE_MEDIA,
+        'beat': SERVICE_BEAT,
+    }
+    catalog = [
+        entry
+        for entry in list_core_services(profile.prefix)
+        if profile.wants(id_map[entry.service_id])
+    ]
+    if profile.wants(SERVICE_YAML_WORKERS):
+        catalog.extend(_load_workers(project_root, profile.prefix))
     return catalog

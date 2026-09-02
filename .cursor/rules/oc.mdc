@@ -1,7 +1,8 @@
 ---
 description: Кроссплатформенность Windows и Linux — os_abstraction, process-ops, ergoms win:/linux:
 globs:
-  - "core/deployment/**"
+  - "core/deployment/windows/**"
+  - "core/deployment/linux/**"
   - "**/os_abstraction/**"
   - "**/process-ops.js"
 alwaysApply: false
@@ -19,6 +20,7 @@ alwaysApply: false
 | Python | `core/api/src/core/utils/os_abstraction/` |
 | Node (процессы) | `core/client/scripts/lib/process-ops.js` |
 | Скрипты ergoms | `core/deployment/windows/`, `core/deployment/linux/`, префиксы `win:` / `linux:` в `commands.conf` |
+| Системные тесты | `ergoms system-test` на обеих ОС — [`system-test.mdc`](system-test.mdc); префикс служб `ERGO_SERVICE_PREFIX` |
 | `.ps1` с кириллицей | UTF-8 BOM — [`ps1-encoding.mdc`](ps1-encoding.mdc), `ergoms ps1-encoding-check` |
 | `.sh` deployment | LF без BOM — [`sh-encoding.mdc`](sh-encoding.mdc), `ergoms sh-encoding-check` |
 
@@ -29,6 +31,7 @@ alwaysApply: false
 | ergoms, commands.conf | [`ergoms-commands.mdc`](ergoms-commands.mdc) |
 | Lifecycle-pipeline | [`lifecycle-pipeline.mdc`](lifecycle-pipeline.mdc) |
 | UTF-8 BOM в .ps1 | [`ps1-encoding.mdc`](ps1-encoding.mdc) |
+| Системные тесты | [`system-test.mdc`](system-test.mdc) |
 | LF без BOM в .sh | [`sh-encoding.mdc`](sh-encoding.mdc) |
 | Развёртывание | [`core/deployment/logic.md`](../../core/deployment/logic.md) |
 | Redis, nginx, TLS | [`deployment-infra.mdc`](deployment-infra.mdc) |

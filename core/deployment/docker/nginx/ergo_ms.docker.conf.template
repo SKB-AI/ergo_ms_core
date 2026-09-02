@@ -1,5 +1,9 @@
 # ERGO MS — reverse proxy для Docker Compose
 # Рендер: ergoms docker-up (render_docker_nginx_config)
+# Паритет с host HTTP: hardening, rate limit, security headers, /health/ deny (С6).
+# HTTPS в Docker — отдельно (NGINX_USE_HTTPS); docker-dev остаётся HTTP-only.
+
+${ERGO_DOCKER_HTTP_PREAMBLE}
 
 ${ERGO_API_UPSTREAM_BLOCK}
 
@@ -11,21 +15,56 @@ server {
     listen ${NGINX_LISTEN_PORT};
     server_name ${NGINX_SERVER_NAME};
 
+    ${ERGO_DOCKER_SECURITY_HEADERS}
+    ${ERGO_DOCKER_PROXY_PARAMS}
+
     root /usr/share/nginx/html;
     index index.html;
 
-    client_max_body_size 610m;
+    # Вычисляется из MEDIA_UPLOAD_MAX_SIZE + direct-upload env (upload_limits.py)
+    client_max_body_size ${ERGO_CLIENT_MAX_BODY_SIZE};
 
     access_log /var/log/ergo/nginx-access.log;
     error_log /var/log/ergo/nginx-error.log warn;
 
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
     location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable" always;
+        ${ERGO_DOCKER_SECURITY_HEADERS}
         try_files $uri =404;
     }
 
+    location = /client-build.json {
+        add_header Cache-Control "no-store" always;
+        ${ERGO_DOCKER_SECURITY_HEADERS}
+        try_files $uri =404;
+    }
+
+    location = /__client-boot {
+        add_header Cache-Control "no-store" always;
+        default_type text/plain;
+        return 204;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store" always;
+        ${ERGO_DOCKER_SECURITY_HEADERS}
+    }
+
+    location = / {
+        add_header Cache-Control "no-store" always;
+        ${ERGO_DOCKER_SECURITY_HEADERS}
+        try_files /index.html =404;
+    }
+
     location / {
+        limit_conn ergo_conn 50;
         try_files $uri $uri/ /index.html;
     }
 
@@ -35,6 +74,8 @@ ${ERGO_CORE_PROXY_LOCATIONS}
     location /static/ {
         alias /usr/share/nginx/static/;
         expires 30d;
+        add_header Cache-Control "public, immutable" always;
+        ${ERGO_DOCKER_SECURITY_HEADERS}
         access_log off;
     }
 

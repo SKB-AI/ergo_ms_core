@@ -44,7 +44,7 @@ ergoms test-redis
 
 ### `redis_runtime`
 
-Модуль [`redis_runtime.py`](../../core/api/src/config/redis_runtime.py) собирает URL из секции `redis` в `databases.yaml` (fallback на legacy `REDIS_*` в `.env`):
+Модуль [`redis_runtime.py`](../../core/api/src/config/redis_runtime.py) собирает URL из секции `redis` в `databases.yaml` (fallback на legacy `REDIS_*` в `.env` для host/port/db; пароль — только `redis.password` в yaml):
 
 | DB (по умолчанию) | Назначение |
 |-------------------|------------|
@@ -52,6 +52,8 @@ ergoms test-redis
 | 1 | кэш Django |
 | 2 | Celery broker |
 | 3 | Celery result backend |
+
+При непустом `redis.password` URL включает AUTH (`redis://user:…@host:port/db` при заданном `redis.user`, иначе `redis://:…@`); portable conf получает `requirepass` и ACL-пользователя; Docker — overlay AUTH + healthcheck. Пустые/шаблонные `user`/`password` при первом `setup-full` / `install-redis` заполняются уникальными значениями, пока нет `redis.conf`. Пустой `DOCKER_REDIS_PUBLISH_PORT` не публикует Redis на хост. Публикация postgres/meilisearch на хост — только `127.0.0.1` (не все интерфейсы).
 
 При `ERGO_BROKER=redis` без явных override:
 
@@ -95,24 +97,51 @@ ergoms status-nginx
 - `ERGO_PROXY=nginx` в корневом `.env`
 - `CLIENT_USE_RELATIVE_API` — effective `true` при `ERGO_PROXY=nginx`; явный override в `env/nginx.env`
 - `NGINX_SERVER_NAME`, `NGINX_PUBLIC_HOST` — в [`env/nginx.env.example`](../../env/nginx.env.example)
+- `NGINX_API_UPSTREAM` — если общий `/api/` должен идти на Django ядра на другом хосте; модули из `MICROSERVICE_MODULES` этот ключ не трогает
 
 SSE: location `/api/realtime/stream/` — `proxy_buffering off`, `proxy_read_timeout 3600s` в `ergo_ms.conf.template`.
 
 Логи: `logs/nginx-access.log`, `logs/nginx-error.log`.
 
+После правок Vue nginx по-прежнему отдаёт **`core/client/dist`**: нужен `ergoms client-build`. Пустая консоль браузера при вечной маске — смотри access-лог, не `client-browser.log` (гость без JWT). Подробности — [`nginx-spa-boot.mdc`](nginx-spa-boot.mdc).
+
+### Logout: не отдавать 429 клиенту
+
+`POST /api/cms/adp/logout/` идемпотентен. Зависший клиентский цикл `401 → logout` не должен класть Daphne и не должен получать **429**: 429 выглядит как сбой и провоцирует повторные POST.
+
+- Location точнее общего `/api/`: `build_logout_location()` в [`render_common.py`](../../core/deployment/nginx/render_common.py)
+- В API проходит только `rate=2r/s` + `burst=5`; избыток — `error_page 429 =204 @logout_limited` (без прокси)
+- Не ставьте `limit_req_status 503`: server-level `error_page` maintenance превратит POST в GET (405)
+- Клиент: один POST на волну до следующего login (`performServerLogout` в `tokenRefresh.js`), голый axios без интерцепторов, гейт в `sessionStorage` + `localStorage` + `window`
+- Интерцептор `apiClient` не вызывает logout на сам `/logout/`
+- Проверка: `ergoms core-rules-check`, `ergoms deployment-test`, живой контур — [`system-test.mdc`](system-test.mdc)
+
+```nginx
+# BAD — клиент ретраит 429 → шторм в access/error
+limit_req zone=ergo_logout burst=5 nodelay;
+limit_req_status 429;
+proxy_pass http://ergo_api;
+
+# GOOD — лишние POST для клиента успешный выход, API не трогаем
+limit_req zone=ergo_logout burst=5 nodelay;
+limit_req_status 429;
+error_page 429 =204 @logout_limited;
+proxy_pass http://ergo_api;
+```
+
 ## Jupyter
 
-Запуск: `ergoms start-jupyter`. Effective-настройки — [`jupyter_runtime.py`](../../core/api/src/config/jupyter_runtime.py).
+Запуск: `ergoms start-jupyter`. Задача **Start All Services** и `ergoms start-all` открывают отдельный терминал JupyterLab, если `ERGO_JUPYTER` не `none` (`ergoms start-jupyter-dev`). Effective-настройки — [`jupyter_runtime.py`](../../core/api/src/config/jupyter_runtime.py).
 
 | Режим (`API_JUPYTER_ACCESS_MODE`) | Доступ | Безопасность |
 |-----------------------------------|--------|--------------|
 | `local` / `auto` (по умолчанию) | `http://localhost:8002/lab` | без токена, только локально |
 | `lan` / `API_JUPYTER_ALLOW_REMOTE=true` | `http://<LAN-IP>:8002/lab?token=...` | обязателен `API_JUPYTER_TOKEN` |
-| `nginx` / `API_JUPYTER_BEHIND_NGINX=true` | `https://<домен>/jupyter/lab?token=...` | токен + admin gate (nginx `auth_request` → `/api/internal/jupyter-access/`) |
+| `nginx` / `ERGO_JUPYTER=nginx` (legacy `API_JUPYTER_BEHIND_NGINX=true`) | `https://<домен>/jupyter/lab?token=...` | токен + admin gate (nginx `auth_request` → `/api/internal/jupyter-access/`) |
 
 Ключи: `API_JUPYTER_BIND_HOST`, `API_JUPYTER_BIND_PORT`, `API_JUPYTER_BASE_PATH`, `API_JUPYTER_URL`, `API_JUPYTER_TOKEN`. Токен **не** генерируется скриптами — задайте в `.env` вручную.
 
-За nginx: `ergoms install-nginx` подставляет upstream и location из `snippets/jupyter_*.conf` при `NGINX_ENABLED=true` и `API_JUPYTER_BEHIND_NGINX=true`. Процесс Jupyter слушает `127.0.0.1:8002`.
+За nginx: `ergoms install-nginx` подставляет upstream и location из `snippets/jupyter_*.conf` при `ERGO_PROXY=nginx` и `ERGO_JUPYTER=nginx` (legacy-override: `NGINX_ENABLED=true` и `API_JUPYTER_BEHIND_NGINX=true`). Процесс Jupyter слушает `127.0.0.1:8002`.
 
 ## TLS (Linux)
 
@@ -144,9 +173,11 @@ CACHE_URL = "redis://127.0.0.1:6379/1"
 | Realtime, channel layer | [`realtime.mdc`](realtime.mdc) |
 | Celery broker | [`celery.mdc`](celery.mdc) |
 | Логи nginx/redis | [`logging.mdc`](logging.mdc) |
+| Пустой экран SPA за nginx | [`nginx-spa-boot.mdc`](nginx-spa-boot.mdc) |
 | Не писать в `.env` | [`no-auto-env-write.mdc`](no-auto-env-write.mdc) |
 | Устройство ergoms | [`core/deployment/logic.md`](../../core/deployment/logic.md) |
 | Docker Compose | [`docker.mdc`](docker.mdc) |
 | Роли процессов модулей | [`process-roles.mdc`](process-roles.mdc) |
 | Настройка для людей | [`.docs/configuration.md`](../../.docs/configuration.md) |
 | Команды | [`.docs/cli.md`](../../.docs/cli.md) |
+| Системные тесты | [`system-test.mdc`](system-test.mdc) |

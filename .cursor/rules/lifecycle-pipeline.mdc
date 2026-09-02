@@ -36,10 +36,11 @@ ergoms / tasks.json / ergo_ms.ps1|sh / commands.conf / docker_cli.py
 | [`orchestrator.py`](../../core/deployment/lifecycle/orchestrator.py) | `run_recipe()` |
 | [`context.py`](../../core/deployment/lifecycle/context.py) | `runtime` (host/docker), `target`, `options` |
 | [`recipes.py`](../../core/deployment/lifecycle/recipes.py) | `RecipeSpec`: шаги, `needs_sudo`, алиасы ergoms |
-| [`steps/common_steps.py`](../../core/deployment/lifecycle/steps/common_steps.py) | Python/npm/migrate/warmup/build/static — ветвление host/docker |
+| [`steps/common_steps.py`](../../core/deployment/lifecycle/steps/common_steps.py) | Python/npm/migrate/warmup/build/static — ветвление host/docker; host npm skip по отпечатку манифестов и наличию пакетов в `node_modules`, не по mtime |
 | [`steps/host_steps.py`](../../core/deployment/lifecycle/steps/host_steps.py) | venv, Poetry, submodule, scaffold, CLI |
 | [`steps/service_steps.py`](../../core/deployment/lifecycle/steps/service_steps.py) | `service-*` → `internal_dispatch` category `service` |
-| [`steps/infra_steps.py`](../../core/deployment/lifecycle/steps/infra_steps.py) | `nginx-*`, `redis-*`, `tls-*` |
+| [`steps/infra_steps.py`](../../core/deployment/lifecycle/steps/infra_steps.py) | `nginx-*`, `redis-*`, `tls-*`; cleanup `setup-full` — `StopSetupStartedInfraStep` (`run_as_cleanup`, nginx/redis + `host_lifecycle` stop_commands) |
+| [`pipeline.py`](../../core/deployment/lifecycle/pipeline.py) | основные шаги; шаги с `run_as_cleanup` — в `finally` (и при ошибке) |
 | [`steps/compose_steps.py`](../../core/deployment/lifecycle/steps/compose_steps.py) | `docker-up` (bootstrap при отсутствии маркера), down/build/ps/logs |
 | [`steps/dev_steps.py`](../../core/deployment/lifecycle/steps/dev_steps.py) | `dev-api`, `start-client`, `start-worker`, `warmup-caches-if-needed` |
 | [`host/ops.py`](../../core/deployment/lifecycle/host/ops.py) | venv, `run_api_command`, npm, foreground-скрипты |
@@ -86,7 +87,7 @@ subprocess.call(build_compose_cmd('up', ...))
 install-deps=win:virtual_env\python\Scripts\python.exe core\deployment\lifecycle\runner.py install-deps && linux:...
 
 # GOOD — tasks.json
-"command": "ergoms setup && npm run install-extensions"
+"command": "ergoms setup && ergoms install-extensions"
 ```
 
 ## internal_dispatch (фаза 1 служб и infra)
@@ -105,6 +106,8 @@ Windows `.ps1` с кириллицей — **UTF-8 BOM** — см. [`ps1-encodin
 
 | Тема | Файл |
 |------|------|
+| Bootstrap Python / без PyYAML в импортах setup | [`lifecycle-python-runtime.mdc`](lifecycle-python-runtime.mdc) |
+| Submodule `core/.github` в setup/update | [`github-org-community.mdc`](github-org-community.mdc) |
 | commands.conf, help | [`ergoms-commands.mdc`](ergoms-commands.mdc) |
 | Docker compose | [`docker.mdc`](docker.mdc) |
 | nginx, redis, TLS | [`deployment-infra.mdc`](deployment-infra.mdc) |

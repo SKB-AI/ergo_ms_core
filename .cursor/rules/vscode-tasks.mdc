@@ -19,7 +19,7 @@ alwaysApply: false
 - Команда — `ergoms …`, не `python manage.py`, не прямой `pip` / `poetry`.
 - В `PATH` всегда есть `core/deployment/bin` (Windows и Linux).
 - У **каждой** задачи (shell, multi-terminal, композиция с `dependsOn`, ergo-module) есть `detail` на русском.
-- `label` — короткий стабильный идентификатор (как у соседей: `Docker: Up`, `Nginx: Stop`).
+- `label` — короткий стабильный идентификатор (как у соседей: `Docker: Up`, `Logs: All Services`).
 - Внутренние шаги композиции — `"hide": true`; в Run Task видна только точка входа.
 - `cwd`: `${workspaceFolder}`; `problemMatcher`: `[]`.
 - Модульные задачи — только в `vscode.tasks.yaml` модуля ([`module-vscode-tasks.mdc`](module-vscode-tasks.mdc)), не в корневом `tasks.json`.
@@ -28,7 +28,7 @@ alwaysApply: false
 
 | Поле | Правило |
 |------|---------|
-| `label` | Уникальное имя; стиль как у существующих (`Nginx: Reload`, `Logs: All Services`) |
+| `label` | Уникальное имя; стиль как у существующих (`Docker: Up`, `Logs: All Services`) |
 | `detail` | **Обязателен.** 1 предложение по-русски сразу после `label`; видно в Run Task под названием |
 
 Без `detail` задачу не добавляй и не оставляй после правки.
@@ -53,11 +53,10 @@ alwaysApply: false
 3. Если задача поднимает несколько сервисов — перечисли их через запятую после двоеточия.
 4. Не копируй `label`, не пиши только имя `ergoms`-команды.
 
-- хорошо: «Запустить все службы разработки: прогрев кэшей, Redis, API, Media API, Celery и клиент»
-- хорошо: «Установить portable Redis и запустить службу»
+- хорошо: «Запустить все службы разработки: прогрев кэшей, Redis, Meilisearch, Jupyter, API, Media API, Celery и клиент»
 - хорошо: «Установить portable PostgreSQL (или пропустить, если есть системная служба)»
 - плохо: «Прогрев кэшей, затем Redis → API/backend → клиент (по умолчанию)» — шаги вместо смысла
-- плохо: пусто, копия `label`, или только имя команды (`ergoms restart-redis`)
+- плохо: пусто, копия `label`, или только имя команды (`ergoms docker-up`)
 
 ## Композиции и скрытые задачи
 
@@ -71,9 +70,9 @@ alwaysApply: false
 ```json
 // BAD — нет detail (любой тип задачи)
 {
-  "label": "Redis: Restart",
+  "label": "Docker: Up",
   "type": "shell",
-  "command": "ergoms restart-redis"
+  "command": "ergoms docker-up"
 }
 ```
 
@@ -97,10 +96,10 @@ alwaysApply: false
 ```json
 // GOOD — фрагмент эталона
 {
-  "label": "Redis: Restart",
-  "detail": "Перезапустить службу Redis",
+  "label": "Docker: Up",
+  "detail": "Поднять стек Docker Compose",
   "type": "shell",
-  "command": "ergoms restart-redis",
+  "command": "ergoms docker-up",
   "options": { "cwd": "${workspaceFolder}" },
   "windows": {
     "options": {

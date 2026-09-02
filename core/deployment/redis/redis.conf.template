@@ -4,6 +4,8 @@
 bind {{REDIS_BIND}}
 port {{REDIS_PORT}}
 protected-mode yes
+{{REDIS_REQUIREPASS_LINE}}
+{{REDIS_ACL_USER_LINE}}
 
 daemonize {{REDIS_DAEMONIZE}}
 pidfile {{REDIS_PIDFILE}}

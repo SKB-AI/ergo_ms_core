@@ -45,9 +45,14 @@ from postgres_common import (  # noqa: E402
     resolve_latest_version,
     resolve_portable_bind,
     resolve_portable_listen_port,
+    postgres_bin,
+    postgres_packages_dir,
     start_server,
     stop_server,
 )
+
+# Django-аудит (core_audit) и поиск по журналу требуют contrib/pg_trgm.
+LINUX_CONTRIB_EXTENSIONS = ('pg_trgm',)
 
 
 def _force_install_from_env() -> bool:
@@ -79,6 +84,93 @@ def _copy_tree_merge(src: Path, dest: Path) -> None:
             shutil.copy2(item, target)
 
 
+def _contrib_control_path(root: Path, name: str) -> Path:
+    return postgres_packages_dir(root) / 'share' / 'extension' / f'{name}.control'
+
+
+def _missing_linux_contrib(root: Path) -> tuple[str, ...]:
+    return tuple(name for name in LINUX_CONTRIB_EXTENSIONS if not _contrib_control_path(root, name).is_file())
+
+
+def _install_linux_contrib_from_source(root: Path, source: Path, *, jobs: str) -> None:
+    """Собрать contrib рядом с уже установленным prefix (make install ядра уже был)."""
+    missing = _missing_linux_contrib(root)
+    if not missing:
+        return
+    pg_config = postgres_bin(root, 'pg_config')
+    if not pg_config.is_file():
+        raise RuntimeError(t('postgres_tool_not_found', tool='pg_config', binary=pg_config))
+    for name in missing:
+        contrib_dir = source / 'contrib' / name
+        if not contrib_dir.is_dir():
+            raise RuntimeError(t('postgres_contrib_source_missing', name=name, path=contrib_dir))
+        print(format_console('info', t('postgres_contrib_building', name=name)))
+        pg_cfg = f'PG_CONFIG={pg_config}'
+        env = {**os.environ, 'PATH': f'{pg_config.parent}{os.pathsep}{os.environ.get("PATH", "")}'}
+        subprocess.run(
+            ['make', f'-j{jobs}', 'USE_PGXS=1', pg_cfg],
+            cwd=str(contrib_dir),
+            check=True,
+            env=env,
+        )
+        subprocess.run(
+            ['make', 'install', 'USE_PGXS=1', pg_cfg],
+            cwd=str(contrib_dir),
+            check=True,
+            env=env,
+        )
+        if not _contrib_control_path(root, name).is_file():
+            raise RuntimeError(t('postgres_contrib_install_failed', name=name))
+        print(format_console('ok', t('postgres_contrib_ready', name=name)))
+
+
+def ensure_linux_contrib_extensions(root: Path) -> None:
+    """Дособрать pg_trgm и др. для уже стоящего portable (без полной пересборки ядра)."""
+    if platform.system().lower() != 'linux':
+        return
+    if not is_installed(root):
+        return
+    missing = _missing_linux_contrib(root)
+    if not missing:
+        return
+    version = read_installed_version(root)
+    if not version:
+        raise RuntimeError(t('postgres_contrib_no_version'))
+    from download_cache import cached_archive_path, download_with_cache
+
+    cache_tmp = root / 'virtual_env' / 'cache' / 'tmp'
+    cache_tmp.mkdir(parents=True, exist_ok=True)
+    tarball = f'postgresql-{version}.tar.bz2'
+    url = f'{PG_FTP_SOURCE}v{version}/{tarball}'
+    with tempfile.TemporaryDirectory(dir=str(cache_tmp)) as tmp:
+        tmp_path = Path(tmp)
+        tar_path = tmp_path / tarball
+        if download_with_cache(
+            root,
+            'postgres',
+            tar_path,
+            lambda dest: _download(url, dest),
+        ):
+            print(
+                format_console(
+                    'info',
+                    t(
+                        'archive_using_cache',
+                        path=cached_archive_path(root, 'postgres', tar_path.name),
+                    ),
+                )
+            )
+        extract_dir = tmp_path / 'src'
+        extract_dir.mkdir()
+        with tarfile.open(tar_path, 'r:bz2') as archive:
+            archive.extractall(extract_dir)
+        source_dirs = list(extract_dir.glob(f'postgresql-{version}'))
+        if not source_dirs:
+            raise RuntimeError(t('postgres_sources_not_found'))
+        jobs = str(max(1, (os.cpu_count() or 2)))
+        _install_linux_contrib_from_source(root, source_dirs[0], jobs=jobs)
+
+
 def _install_windows(root: Path, version: str, force: bool) -> None:
     paths = _ensure_layout(root)
     installed = read_installed_version(root)
@@ -105,7 +197,23 @@ def _install_windows(root: Path, version: str, force: bool) -> None:
     with tempfile.TemporaryDirectory(dir=str(cache_tmp)) as tmp:
         tmp_path = Path(tmp)
         zip_path = tmp_path / f'postgresql-{version}-windows-x64-binaries.zip'
-        _download(url, zip_path)
+        from download_cache import cached_archive_path, download_with_cache
+
+        if download_with_cache(
+            root,
+            'postgres',
+            zip_path,
+            lambda dest: _download(url, dest),
+        ):
+            print(
+                format_console(
+                    'info',
+                    t(
+                        'archive_using_cache',
+                        path=cached_archive_path(root, 'postgres', zip_path.name),
+                    ),
+                )
+            )
         extract_dir = tmp_path / 'extract'
         extract_dir.mkdir()
         print(t('postgres_unpacking'))
@@ -121,29 +229,6 @@ def _install_windows(root: Path, version: str, force: bool) -> None:
     print(format_console('ok', t('postgres_installed_at', version=version, base=paths['base'])))
 
 
-def _linux_build_tools_hint() -> str:
-    if Path('/etc/debian_version').is_file():
-        return (
-            'sudo apt-get install -y build-essential libreadline-dev '
-            'zlib1g-dev flex bison libxml2-dev libssl-dev'
-        )
-    if Path('/etc/redhat-release').is_file():
-        return 'sudo dnf groupinstall -y "Development Tools" && sudo dnf install -y readline-devel zlib-devel'
-    return t('postgres_linux_build_tools')
-
-
-def _require_linux_build_tools() -> None:
-    missing = [tool for tool in ('gcc', 'make') if shutil.which(tool) is None]
-    if missing:
-        raise RuntimeError(
-            t(
-                'postgres_linux_build_required',
-                tools=', '.join(missing),
-                hint=_linux_build_tools_hint(),
-            )
-        )
-
-
 def _install_linux(root: Path, version: str, force: bool) -> None:
     paths = _ensure_layout(root)
     if is_installed(root) and not force:
@@ -154,7 +239,9 @@ def _install_linux(root: Path, version: str, force: bool) -> None:
         print(format_console('info', t('postgres_upgrading', installed=installed, version=version)))
         force = True
 
-    _require_linux_build_tools()
+    from linux_build_packages import ensure_linux_build_packages
+
+    ensure_linux_build_packages('postgres')
 
     if force and paths['bin'].is_dir():
         stop_server(root)
@@ -167,7 +254,23 @@ def _install_linux(root: Path, version: str, force: bool) -> None:
     with tempfile.TemporaryDirectory(dir=str(cache_tmp)) as tmp:
         tmp_path = Path(tmp)
         tar_path = tmp_path / tarball
-        _download(url, tar_path)
+        from download_cache import cached_archive_path, download_with_cache
+
+        if download_with_cache(
+            root,
+            'postgres',
+            tar_path,
+            lambda dest: _download(url, dest),
+        ):
+            print(
+                format_console(
+                    'info',
+                    t(
+                        'archive_using_cache',
+                        path=cached_archive_path(root, 'postgres', tar_path.name),
+                    ),
+                )
+            )
         extract_dir = tmp_path / 'src'
         extract_dir.mkdir()
         with tarfile.open(tar_path, 'r:bz2') as archive:
@@ -180,12 +283,20 @@ def _install_linux(root: Path, version: str, force: bool) -> None:
         jobs = str(max(1, (os.cpu_count() or 2)))
         print(t('postgres_building', version=version))
         configure = ['./configure', f'--prefix={prefix}', '--without-icu']
-        cfg = subprocess.run([*configure, '--with-openssl'], cwd=str(source), check=False)
+        cfg = subprocess.run(
+            [*configure, '--with-openssl', '--with-lz4'],
+            cwd=str(source),
+            check=False,
+        )
+        if cfg.returncode != 0:
+            print(format_console('warning', t('postgres_lz4_configure_fallback')))
+            cfg = subprocess.run([*configure, '--with-openssl'], cwd=str(source), check=False)
         if cfg.returncode != 0:
             print(format_console('warning', t('postgres_openssl_configure_fallback')))
             subprocess.run(configure, cwd=str(source), check=True)
         subprocess.run(['make', f'-j{jobs}'], cwd=str(source), check=True)
         subprocess.run(['make', 'install'], cwd=str(source), check=True)
+        _install_linux_contrib_from_source(root, source, jobs=jobs)
 
     postgres_version_file(root).write_text(version + '\n', encoding='utf-8')
     print(format_console('ok', t('postgres_installed_at', version=version, base=paths['base'])))
@@ -255,22 +366,34 @@ def install_postgres(
     if system == 'auto':
         system = platform.system().lower()
 
-    version = resolve_latest_version()
-    print(format_console('info', t('postgres_target_version', version=version)))
+    # Повторный setup: не ходить на FTP за latest, если portable уже стоит.
+    installed_version = read_installed_version(root) if is_installed(root) else None
+    if installed_version and not force:
+        version = installed_version
+        print(format_console('skip', t('postgres_already_installed', version=version)))
+    else:
+        version = resolve_latest_version()
+        print(format_console('info', t('postgres_target_version', version=version)))
     print(format_console('info', t('postgres_listen_port_info', listen_port=listen_port)))
 
+    from security.ensure_infra_credentials import ensure_infra_credentials
+
+    ensure_infra_credentials(root)
     defaults = load_db_defaults(root)
     user = defaults['user']
     password = defaults['password']
 
     try:
-        if system == 'windows':
-            _install_windows(root, version, force)
-        elif system == 'linux':
-            _install_linux(root, version, force)
-        else:
-            raise RuntimeError(t('postgres_unsupported_platform', system=system))
+        if not (installed_version and not force):
+            if system == 'windows':
+                _install_windows(root, version, force)
+            elif system == 'linux':
+                _install_linux(root, version, force)
+            else:
+                raise RuntimeError(t('postgres_unsupported_platform', system=system))
 
+        if system == 'linux':
+            ensure_linux_contrib_extensions(root)
         _initdb_if_needed(root, user, password, listen_port, listen_bind)
         if start:
             start_server(root)

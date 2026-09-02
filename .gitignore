@@ -47,9 +47,6 @@ __pycache__/
 /virtual_env/jupyter/*
 !/virtual_env/jupyter/.gitkeep
 
-/virtual_env/docker-cache/*
-!/virtual_env/docker-cache/.gitkeep
-
 /virtual_env/client-remotes/*
 !/virtual_env/client-remotes/.gitkeep
 /virtual_env/client-standalone/*
@@ -86,6 +83,7 @@ __pycache__/
 /core/deployment/docker/docker-compose.modules.generated.yml
 /core/deployment/docker/docker-compose.build.generated.yml
 /core/deployment/docker/docker-compose.publish.generated.yml
+/core/deployment/docker/docker-compose.redis-auth.generated.yml
 /core/deployment/docker/init/postgres/02-celery-databases.sql
 /core/deployment/docker/nginx/ergo_ms.conf.rendered
 /core/deployment/docker/modules.dockerignore.generated
@@ -98,3 +96,7 @@ core/client/src/js/lucideIconFiles.generated.js
 # Генерируется unplugin-auto-import при dev/build (vite.config.js)
 core/client/src/auto-imports.d.ts
 core/client/dist/
+# Cursor project skills — не в git (личные навыки: ~/.cursor/skills)
+.cursor/skills/
+# Локальные заметки агента (SSH, хосты) — не в remote
+.cursor/rules/*.local.mdc

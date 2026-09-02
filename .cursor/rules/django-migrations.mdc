@@ -1,5 +1,5 @@
 ---
-description: Django-миграции ERGO MS — индексы с явными name, нумерация, makemigrations без циклов, ergoms
+description: Django-миграции ERGO MS — индексы, нумерация, локальное сжатие schema, makemigrations, ergoms
 globs:
   - "**/migrations/*.py"
 alwaysApply: false
@@ -15,7 +15,8 @@ alwaysApply: false
 - Запрещены placeholder-имена индексов (`a1b2c3`, `d4e5f6`, `foo`, `bar`).
 - Один номер миграции — один файл; не создавай второй `0025_*`, если уже есть `0025_*`.
 - После правок: `ergoms api makemigrations --dry-run` **дважды подряд** → оба раза `No changes detected`.
-- Уже применённую миграцию не переписывай «задним числом» — добавляй следующую по номеру.
+- На **локальном** этапе не раздувай цепочку: соседние schema-файлы сжимай в один до push (см. ниже).
+- Если миграция уже уехала с машины (push / общая ветка / чужая БД) — не переписывай, только следующий номер.
 
 ## Обязательно
 
@@ -37,6 +38,41 @@ alwaysApply: false
 - Следующий файл: `NNNN_<краткое_имя>.py`, где `NNNN` — на 1 больше последней миграции приложения.
 - `dependencies` — на реально существующую миграцию; не дублируй номер (конфликт `0025_theme_module_pair` + `0025_rename_...`).
 - Data-миграции (`RunPython`, seed) — **после** schema-миграций, от которых зависят поля.
+
+### Локальное сжатие schema-миграций
+
+Цель: пока изменения ещё только на этой машине, **не плодить лишние номера** — несколько подряд schema-шагов по моделям сводить в один файл (откат → слияние → снова migrate). Это не исторический `ergoms sq-del-migrations` и не про заполнение данных.
+
+**Рекомендуй сжатие, когда все условия сразу:**
+
+- файлы ещё локальные (uncommitted или commits не в remote общей ветки);
+- операции только schema по моделям: `CreateModel`, `AddField`, `AlterField`, `RemoveField`, индексы, `Rename*` и т.п.;
+- в рамках одной задачи / одного `app_label` накопилось 2+ соседних локальных schema-файла — сжать до одного (или минимума разумных шагов) **до** коммита/push.
+
+**Не сливай и не переписывай:**
+
+- есть `RunPython` / `RunSQL` / seed / backfill / заполнение (меню, каталоги и т.п.);
+- миграция уже у других или на общем стенде;
+- сомнение «локально ли» → добавляй следующий номер.
+
+**Процедура (только ergoms):**
+
+```text
+1. ergoms api migrate <app_label> <предыдущая>
+2. Слить операции в один NNNN_*.py, удалить лишние локальные файлы
+3. dependencies — на родителя (+ swappable AUTH при CreateModel с FK на User)
+4. ergoms api migrate <app_label>
+5. ergoms api makemigrations --dry-run (×2) → No changes detected
+```
+
+```text
+# GOOD — два локальных schema-шага → один файл до push
+# 0005_inbox_restored_at.py + 0006_user_settings.py
+# → 0005_inbox_restored_at_and_user_settings.py
+
+# BAD — оставить пачку мелких локальных schema «на потом»
+# BAD — откат/rewrite миграции с RunPython или уже запушенной
+```
 
 ### Метаданные полей
 
@@ -63,8 +99,8 @@ indexes = [models.Index(fields=['status', 'created_at'])]
 # BAD — второй файл с тем же номером
 # 0025_foo.py уже есть → не создавай 0025_bar.py, только 0026_bar.py
 
-# BAD — править содержимое уже применённой миграции вместо новой
-# (ломает согласованность у тех, кто успел применить старую версию файла)
+# BAD — править миграцию, которая уже у других / в remote / на общем стенде
+# (ломает согласованность; локальный schema-only merge — см. секцию выше)
 ```
 
 ```python
@@ -94,3 +130,4 @@ indexes = [
 | Django, User, apps | [`django.mdc`](django.mdc) |
 | Модули, `api/migrations/` | [`modules.mdc`](modules.mdc) |
 | Submodule — куда коммитить | [`gitignore.mdc`](gitignore.mdc) |
+| Исторический squash shared-цепочки | `ergoms sq-del-migrations` ([`commands.conf`](../../core/deployment/commands.conf)) — не путать с локальным сжатием выше |

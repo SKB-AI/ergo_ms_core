@@ -13,8 +13,10 @@ from typing import FrozenSet
 
 _SKIPPED_MODULE_DIR_NAMES = frozenset({'__pycache__'})
 
-# Роли HTTP API, для которых в MODULE_RUNTIME=microservice исключаются MICROSERVICE_MODULES.
+# Роли ядра, для которых в MODULE_RUNTIME=microservice исключаются MICROSERVICE_MODULES.
+# Beat ядра не планирует вынесенные модули: у них свой процесс на хосте модуля.
 _CORE_API_PROCESS_ROLES = frozenset({'api', 'core-api'})
+_CORE_SCHEDULE_PROCESS_ROLES = frozenset({'api', 'core-api', 'beat'})
 
 # Каноническое значение + устаревший алиас ``split``.
 _RUNTIME_MICROSERVICE = frozenset({'microservice', 'split'})
@@ -92,6 +94,22 @@ class ModuleCatalog:
             process_modules_explicit=bool(process_modules_raw.strip()),
         )
 
+    @classmethod
+    def from_project_env(
+        cls,
+        project_root: Path,
+        environ: Mapping[str, str] | None = None,
+    ) -> ModuleCatalog:
+        """Как ``from_env``, но сначала читает корневой ``.env`` и ``env/*.env``."""
+        from env_file_loader import load_project_env  # noqa: WPS433
+
+        values = dict(load_project_env(project_root))
+        overlay = environ if environ is not None else os.environ
+        for key, val in overlay.items():
+            if val is not None and str(val).strip() != '':
+                values[key] = str(val).strip()
+        return cls.from_env(project_root, values)
+
     @property
     def project_root(self) -> Path:
         return self._project_root
@@ -135,6 +153,14 @@ class ModuleCatalog:
     def is_microservice_mode(self) -> bool:
         return self._module_runtime == 'microservice'
 
+    def allows_module_process_os_services(self, module_name: str) -> bool:
+        """OS-службы API/worker/beat модуля — только microservice и имя в MICROSERVICE_MODULES."""
+        if not module_name or module_name in self._disabled:
+            return False
+        if not self.is_microservice_mode():
+            return False
+        return module_name in self._microservice_modules
+
     def is_split_mode(self) -> bool:
         """Устаревший алиас ``is_microservice_mode``."""
         return self.is_microservice_mode()
@@ -151,10 +177,14 @@ class ModuleCatalog:
         """
         HTTP-процесс ядра (start_api): в microservice исключает MICROSERVICE_MODULES.
 
-        Worker/beat и роли без явного ``api`` грузят все non-disabled.
+        Worker без ``--module`` по-прежнему грузит все non-disabled.
         ``start_api`` обязан выставлять ``ERGO_PROCESS_ROLE=api``.
         """
         return self._process_role in _CORE_API_PROCESS_ROLES
+
+    def is_core_schedule_process(self) -> bool:
+        """HTTP ядра или общий Beat: в microservice не грузит MICROSERVICE_MODULES."""
+        return self._process_role in _CORE_SCHEDULE_PROCESS_ROLES
 
     def is_loadable_in_process(self, module_name: str) -> bool:
         """Модуль должен попасть в INSTALLED_APPS / URL discovery этого процесса."""
@@ -168,7 +198,7 @@ class ModuleCatalog:
         if module_only is not None:
             return module_name == module_only
 
-        if self.is_microservice_mode() and self.is_core_api_process():
+        if self.is_microservice_mode() and self.is_core_schedule_process():
             if module_name in self._microservice_modules:
                 return False
 

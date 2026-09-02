@@ -1,0 +1,91 @@
+---
+description: Балансировщик Celery — task_footprint.yaml, бюджет хоста, celery-balance, overlay
+alwaysApply: false
+---
+# Балансировщик Celery (ergoms)
+
+`ergoms celery-balance` считает бюджет RAM/CPU/GPU и рекомендует concurrency воркеров. Статический [`celery_workers.yaml`](../../celery_workers.yaml) **не переписывается**.
+
+## Кратко
+
+- Режимы: `CELERY_BALANCE=auto` (overlay при старте worker, **дефолт**) | `recommend` (отчёт) | `off` (только yaml)
+- Hook модуля: `modules/<name>/task_footprint.yaml` — YAML, вне Django, как `process_roles.yaml`
+- Overlay: `virtual_env/cache/celery_balance/decision.json` (`plans`, `queue_limits`, `queue_classes`, `reserve_light`, `non_light_cap`, `pause_queues`)
+- История RSS / VRAM / wall-time: `virtual_env/cache/celery_balance/history.jsonl` (без payload задач)
+- Бюджет RAM/CPU/VRAM **общий** на все воркеры; GPU считается **по картам**, не суммой VRAM
+- `off` — прежнее поведение, только `celery_workers.yaml`
+
+## Обязательно
+
+- Новые тяжёлые задачи модуля — объяви footprint (class, ram_mb, max_parallel, gpu при необходимости)
+- GPU-задачи: `gpu_required`, `vram_mb`, при необходимости `cpu_fallback: false`
+- Долгоживущий демон с GPU — `reserve_host_budget` / `reserve_vram_mb` в `process_roles.yaml`
+- В ядре нет имён модулей: только `ModuleCatalog` + имя файла hook
+- Hard-cap: `CELERY_BALANCE_MAX_CONCURRENCY` / `MIN_CONCURRENCY`; резерв инфры не отдаётся Celery
+
+## Запрещено
+
+```yaml
+# BAD — Python-импорт домена модуля из deployment
+# task_footprint.py с from modules.<name>.api.tasks import ...
+```
+
+```text
+# BAD — переписать celery_workers.yaml из балансировщика
+# BAD — restart-loop воркеров в --watch
+```
+
+## Схема hook
+
+```yaml
+module: <name>
+defaults:
+  class: medium
+tasks:
+  - queue: <name>
+    pattern: "modules.<name>.api.tasks.*"
+    class: heavy
+    ram_mb: 2048
+    cpu_units: 2
+    gpu_required: false
+    vram_mb: 0
+    max_parallel: 1
+    cpu_fallback: true
+```
+
+`class`: `light` | `medium` | `heavy`. Нет файла — очередь считается `medium`, кроме `default` (`light`). Битый YAML — `[WARNING]`, CLI не падает.
+
+`max_parallel` — только потолок очереди, не размер пула воркера. На смешанном воркере (`queues: all` или light вместе с medium/heavy) overlay оставляет `reserve_light` слотов лёгким очередям (`non_light_cap = concurrency − reserve_light`) и ставит `prefetch=1`.
+
+`cpu_fallback: false` при `gpu_required` и отсутствии устройства: `concurrency` остаётся минимальным, очередь попадает в `pause_queues` (новые задачи не стартуют).
+
+История не занижает заявку: `ram_mb` / `vram_mb` = `max(декларация, медиана)`.
+
+Если воркер `queues: all` смешивает GPU и лёгкие очереди, CLI пишет подсказку вынести GPU-очередь. Yaml не меняется.
+
+## Живой потолок
+
+`--watch` для `prefork` по-прежнему делает `pool_grow` / `pool_shrink`. Для `threads` воркер перечитывает overlay и обновляет `QueueConcurrencyManager` (семафор очереди), не убивая процесс.
+
+`CELERY_BALANCE_GPU_UTIL_CAP` — не добавлять GPU-слоты, если средняя загрузка карт не ниже порога.
+
+## Команды
+
+```text
+ergoms celery-balance --dry-run
+ergoms celery-balance --json
+ergoms celery-balance --watch
+```
+
+`--dry-run` не пишет overlay и не трогает процессы. `auto` пишет overlay; `start_celery_worker.py` читает его при старте.
+
+Knobs: [`env/celery.env.example`](../../env/celery.env.example). Inventory железа только runtime, не в git.
+
+## Связанные правила
+
+| Тема | Файл |
+|------|------|
+| Запуск worker/beat | [`celery.mdc`](celery.mdc) |
+| Роли процессов | [`process-roles.mdc`](process-roles.mdc) |
+| Docker workers | [`docker.mdc`](docker.mdc) |
+| Изоляция ядра | [`core-module-isolation.mdc`](core-module-isolation.mdc) |

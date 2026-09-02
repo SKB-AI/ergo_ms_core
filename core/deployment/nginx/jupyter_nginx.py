@@ -4,13 +4,15 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 _SNIPPETS_DIR = Path(__file__).resolve().parent / 'snippets'
+_DEPLOYMENT_DIR = Path(__file__).resolve().parent.parent
+if str(_DEPLOYMENT_DIR) not in sys.path:
+    sys.path.insert(0, str(_DEPLOYMENT_DIR))
 
-
-def _truthy(value: str) -> bool:
-    return value.strip().lower() in ('1', 'true', 'yes')
+from ergo_modes import effective_jupyter_behind_nginx  # noqa: E402
 
 
 def _normalize_base_path(raw: str) -> str:
@@ -23,7 +25,7 @@ def _normalize_base_path(raw: str) -> str:
 
 
 def jupyter_nginx_enabled(values: dict[str, str]) -> bool:
-    return _truthy(values.get('NGINX_ENABLED', '')) and _truthy(values.get('API_JUPYTER_BEHIND_NGINX', ''))
+    return effective_jupyter_behind_nginx(values)
 
 
 def resolve_jupyter_bind_port(values: dict[str, str], default: str = '8002') -> str:

@@ -1,8 +1,10 @@
 ---
-description: Изолированные тесты модулей — ergoms api test, --full
+description: Изолированные тесты модулей и системный контур — ergoms api test, ergoms system-test
 alwaysApply: false
 ---
-# Тесты модулей
+# Тесты
+
+## Тесты модулей
 
 Тест модуля: `ergoms api test modules.<имя>.api...`
 
@@ -19,9 +21,22 @@ ergoms api test modules.<name>.api
 ergoms api test modules.<name>.api --full
 ```
 
+## Системные тесты
+
+Развёртывание, установка с нуля, команды, сценарии host/docker, безопасность стека, скорость, браузер и службы ОС — **`ergoms system-test`**. Правило и какой `--suite` гонять: [`system-test.mdc`](system-test.mdc).
+
+```bash
+ergoms system-test --suite unit
+ergoms system-test --suite install --launch docker
+ergoms system-test --suite install --launch host
+```
+
+Не путать с `ergoms api test`: Django-тесты модуля не заменяют изолированный подъём системы.
+
 ## Связанные правила
 
 | Тема | Файл |
 |------|------|
+| Когда гонять system-test | [`system-test.mdc`](system-test.mdc) |
 | Команды ergoms | [`no-direct-manage-py.mdc`](no-direct-manage-py.mdc) |
-| Общий код, тесты по просьбе | [`code.mdc`](code.mdc) |
+| Общий код | [`code.mdc`](code.mdc) |

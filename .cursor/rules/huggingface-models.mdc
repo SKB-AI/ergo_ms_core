@@ -1,0 +1,79 @@
+---
+description: Снимки Hugging Face — huggingface_models.yaml, ergoms pull-huggingface-models
+globs:
+  - "**/huggingface_models.yaml"
+  - "core/deployment/huggingface/**"
+  - "core/api/src/core/utils/huggingface_snapshot.py"
+alwaysApply: false
+---
+
+# Снимки Hugging Face
+
+Веса `org/name` (sentence-transformers и аналоги) ставятся **централизованно**: hook модуля + discovery ядра, как [`packages.mdc`](packages.mdc). Это не `ollama pull` и не portable-пакет.
+
+## Кратко
+
+- Hook: `modules/<name>/huggingface_models.yaml`
+- Веса: `virtual_env/trained_models/huggingface/<org>/<name>`
+- Установка: [`core/deployment/huggingface/`](../../core/deployment/huggingface/)
+- Кэш Hub (`HF_HOME`): `virtual_env/cache/huggingface/` — только черновик качалки, не место модели
+- CLI: `ergoms huggingface-models`, `ergoms pull-huggingface-models`
+- Setup-full: шаг `PullHuggingfaceModelsStep` после `python-install` — только `required: true`. Уже лежащий снимок не качается повторно
+- Качалка берёт safetensors/pytorch, не flax/tf/onnx. Старый путь `trained_models/<name>` переносится в `huggingface/<org>/<name>`
+- Runtime: [`huggingface_snapshot.py`](../../core/api/src/core/utils/huggingface_snapshot.py) — `resolve_huggingface_source` / `ensure_local_source`
+
+## Обязательно
+
+1. Новая sentence-transformers / Hub-модель модуля — строка в `huggingface_models.yaml`, не download в Django management и не запись в `ollama_models.yaml`.
+2. Имя — `repo:` / `name:` или `env:` + `default:` (как в `ollama_models.yaml`).
+3. Загрузка модели в коде — `resolve_huggingface_source(repo_id)` (снимок после setup) или `ensure_local_source(repo_id)` (поставить в `trained_models`, если ещё нет). Не `from_pretrained(hub_id)` и не свой `HF_HOME` в кэше модуля.
+4. Пути только через `project_layout` (`huggingface_snapshot_dir`, `resolve_huggingface_source`).
+5. `required: false` setup-full не качает. Необязательный снимок ставит `ensure_local_source` при первом использовании, либо `ergoms pull-huggingface-models --include-optional`.
+
+## Запрещено
+
+```yaml
+# BAD — снимок Hub в реестре Ollama
+# modules/<name>/ollama_models.yaml
+models:
+  - env: SOME_EMBEDDING_MODEL
+    default: org/model-name
+```
+
+```python
+# BAD — свой кэш вне trained_models
+SentenceTransformer('org/model-name', cache_folder=os.path.expanduser('~/.cache'))
+os.environ['HF_HOME'] = str(CACHE_DIR / '<name>' / 'huggingface')
+```
+
+```yaml
+# GOOD
+# modules/<name>/huggingface_models.yaml
+module: <name>
+models:
+  - env: SOME_EMBEDDING_MODEL
+    default: org/model-name
+    required: true
+```
+
+```python
+# GOOD
+from src.core.utils.huggingface_snapshot import (
+    ensure_local_source,
+    resolve_huggingface_source,
+)
+
+model = SentenceTransformer(resolve_huggingface_source(repo_id))
+# если снимок мог ещё не стоять:
+model = SentenceTransformer(ensure_local_source(repo_id))
+```
+
+`ollama_models.yaml` — только имена библиотеки Ollama (или `hf.co/…` GGUF). Если в `OLLAMA_EMBEDDINGS_MODEL` по ошибке стоит `org/name`, pull и RAG берут `default` из yaml (`embeddinggemma`), а не `ollama pull` этого снимка. Веса моделей — не `packages.yaml` ([`packages.mdc`](packages.mdc)).
+
+## Связанные правила
+
+| Тема | Файл |
+|---|---|
+| Portable-бинарники | [`packages.mdc`](packages.mdc) |
+| Артефакты в корне | [`project-root-artifacts.mdc`](project-root-artifacts.mdc) |
+| Модули, hook’и | [`modules.mdc`](modules.mdc) |

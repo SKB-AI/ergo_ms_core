@@ -6,11 +6,17 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from .strategies import CopyStrategy, DatabasesYamlCopyStrategy, FullCopyStrategy
+from .strategies import (
+    CopyStrategy,
+    DatabasesYamlCopyStrategy,
+    EnvPreserveSecretsCopyStrategy,
+    FullCopyStrategy,
+)
 
 
 class ScaffoldAction(str, Enum):
     CREATED = 'created'
+    OVERWRITTEN = 'overwritten'
     SKIPPED_EXISTS = 'skipped_exists'
     SKIPPED_NO_SOURCE = 'skipped_no_source'
     FAILED = 'failed'
@@ -29,13 +35,20 @@ class ScaffoldResult:
 
 
 @dataclass(frozen=True)
+class EnvFilePair:
+    label: str
+    example_path: Path
+    env_path: Path
+
+
+@dataclass(frozen=True)
 class ConfigTemplate:
     source_rel: str
     target_rel: str
     strategy: CopyStrategy
     created_detail: str = ''
 
-    def execute(self, project_root: Path) -> ScaffoldResult:
+    def execute(self, project_root: Path, *, overwrite: bool = False) -> ScaffoldResult:
         source = project_root / self.source_rel
         target = project_root / self.target_rel
         source_display = self.source_rel.replace('\\', '/')
@@ -44,8 +57,23 @@ class ConfigTemplate:
         if not source.is_file():
             return ScaffoldResult(source_display, target_display, ScaffoldAction.SKIPPED_NO_SOURCE)
 
-        if target.exists():
-            return ScaffoldResult(source_display, target_display, ScaffoldAction.SKIPPED_EXISTS)
+        existed = target.exists()
+        if existed and not overwrite:
+            try:
+                detail = self.strategy.merge_into_existing(source, target)
+            except OSError as exc:
+                return ScaffoldResult(
+                    source_display,
+                    target_display,
+                    ScaffoldAction.FAILED,
+                    str(exc),
+                )
+            return ScaffoldResult(
+                source_display,
+                target_display,
+                ScaffoldAction.SKIPPED_EXISTS,
+                detail,
+            )
 
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -54,10 +82,11 @@ class ConfigTemplate:
             last_detail = getattr(self.strategy, 'last_detail', '') or ''
             if last_detail:
                 detail = last_detail
+            action = ScaffoldAction.OVERWRITTEN if existed else ScaffoldAction.CREATED
             return ScaffoldResult(
                 source_display,
                 target_display,
-                ScaffoldAction.CREATED,
+                action,
                 detail,
             )
         except OSError as exc:
@@ -147,6 +176,11 @@ class ConfigTemplateRegistry:
                 FullCopyStrategy(),
             ),
             ConfigTemplate(
+                'env/search.env.example',
+                'env/search.env',
+                FullCopyStrategy(),
+            ),
+            ConfigTemplate(
                 'env/modules.env.example',
                 'env/modules.env',
                 FullCopyStrategy(),
@@ -187,3 +221,49 @@ class ConfigTemplateRegistry:
     @classmethod
     def all_templates(cls, project_root: Path) -> list[ConfigTemplate]:
         return cls.project_templates(project_root) + cls.module_env_templates(project_root)
+
+    @classmethod
+    def reset_templates(cls, project_root: Path) -> list[ConfigTemplate]:
+        """Шаблоны для ``ergoms env --reset-from-example``: .env, фрагменты, модули, yaml.
+
+        Для ``*.env.example`` уже заданные секреты рабочего файла сохраняются.
+        """
+        templates: list[ConfigTemplate] = []
+        for template in cls.all_templates(project_root):
+            if template.source_rel.endswith('.env.example'):
+                templates.append(
+                    ConfigTemplate(
+                        template.source_rel,
+                        template.target_rel,
+                        EnvPreserveSecretsCopyStrategy(),
+                        created_detail=template.created_detail,
+                    ),
+                )
+            else:
+                templates.append(template)
+        return templates
+
+    @classmethod
+    def env_templates(cls, project_root: Path) -> list[ConfigTemplate]:
+        return [
+            template
+            for template in cls.all_templates(project_root)
+            if template.source_rel.endswith('.env.example')
+        ]
+
+    @classmethod
+    def env_check_pairs(cls, project_root: Path) -> list[EnvFilePair]:
+        pairs: list[EnvFilePair] = []
+        for template in cls.env_templates(project_root):
+            example_path = project_root / template.source_rel
+            env_path = project_root / template.target_rel
+            label = template.target_rel.replace('\\', '/')
+            pairs.append(
+                EnvFilePair(
+                    label=label,
+                    example_path=example_path,
+                    env_path=env_path,
+                ),
+            )
+        return pairs
+

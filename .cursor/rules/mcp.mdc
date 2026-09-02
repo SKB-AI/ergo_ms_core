@@ -81,6 +81,6 @@ server:
 |------|------|
 | Модули | [`modules.mdc`](modules.mdc) |
 | Rules модулей | [`module-cursor-rules.mdc`](module-cursor-rules.mdc) |
-| Ollama MCP | [`modules/ollama_framework/.cursor/rules/ollama-framework.mdc`](../../modules/ollama_framework/.cursor/rules/ollama-framework.mdc) |
+| MCP модуля | `modules/<name>/.cursor/rules/` + hook discovery |
 | Безопасность | [`security.mdc`](security.mdc) |
 | ergoms | [`no-direct-manage-py.mdc`](no-direct-manage-py.mdc) |

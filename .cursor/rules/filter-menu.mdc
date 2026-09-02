@@ -91,7 +91,7 @@ const filterFields = computed(() => [
 |--------|------------|
 | `heading` | Подзаголовок группы (`label`), не интерактивный |
 | `select` | Flyout со списком; props как у SelectBox: `options`, `valueKey`, `labelKey`, `includeAllOption`, `allLabel`, `searchable` |
-| `date` | Flyout с `input[type=date]` и «Очистить» |
+| `date` | Flyout с `DatePicker` (`YYYY-MM-DD`) |
 
 Обязательные поля интерактивного пункта: `type`, `key`, `label`.
 

@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import argparse
-import secrets
 import sys
 from pathlib import Path
 
@@ -18,14 +17,32 @@ _DEPLOYMENT_DIR = Path(__file__).resolve().parents[1]
 if str(_DEPLOYMENT_DIR) not in sys.path:
     sys.path.insert(0, str(_DEPLOYMENT_DIR))
 
-from cli_locale import t
-from console_tags import configure_stdio_utf8, format_console
+from cli_locale import (  # noqa: E402
+    clear_locale_caches,
+    ensure_project_env_loaded,
+    resolve_cli_language,
+    t,
+)
+from console_tags import configure_stdio_utf8, format_console  # noqa: E402
+from security.ensure_secret import DEFAULT_SECRET_BYTES, generate_secret_hex  # noqa: E402
 
-DEFAULT_BYTES = 32
+DEFAULT_BYTES = DEFAULT_SECRET_BYTES
+
+
+def _detect_project_root() -> Path | None:
+    candidate = _DEPLOYMENT_DIR.parent.parent
+    if (candidate / 'pyproject.toml').is_file():
+        return candidate
+    return None
 
 
 def main() -> int:
     configure_stdio_utf8()
+
+    root = _detect_project_root()
+    ensure_project_env_loaded(root)
+    clear_locale_caches()
+    resolve_cli_language(project_root=root)
 
     parser = argparse.ArgumentParser(
         description=t('generate_secret_description'),
@@ -61,15 +78,10 @@ def main() -> int:
         )
         return 1
 
-    print(
-        format_console(
-            'info',
-            t('secret_copy_hint'),
-        ),
-        file=sys.stderr,
-    )
+    print(format_console('info', t('secret_copy_hint')), file=sys.stderr)
+    print(format_console('info', t('secret_migrate_hint')), file=sys.stderr)
     for _ in range(args.count):
-        print(secrets.token_hex(args.bytes), flush=True)
+        print(generate_secret_hex(args.bytes), flush=True)
     return 0
 
 

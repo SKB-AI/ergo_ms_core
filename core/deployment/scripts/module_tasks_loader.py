@@ -2,7 +2,7 @@
 Загрузка modules/*/vscode.tasks.yaml: агрегация include_in для setup-full / start-all.
 
 Discovery через ModuleCatalog. Вне Django — только YAML.
-CLI: python module_tasks_loader.py --root PATH --json [--target setup-full|start-all]
+CLI: python module_tasks_loader.py --root PATH --json [--target setup-full|…]
 """
 
 from __future__ import annotations
@@ -29,10 +29,12 @@ from lifecycle.modules.catalog import ModuleCatalog  # noqa: E402
 
 MODULE_TASKS_FILENAME = 'vscode.tasks.yaml'
 INCLUDE_SETUP_FULL = 'setup-full'
+INCLUDE_SETUP_FULL_AFTER_MIGRATE = 'setup-full-after-migrate'
 INCLUDE_START_ALL = 'start-all'
 INCLUDE_LOGS_ALL = 'logs-all'
 VALID_INCLUDE_TARGETS = frozenset({
     INCLUDE_SETUP_FULL,
+    INCLUDE_SETUP_FULL_AFTER_MIGRATE,
     INCLUDE_START_ALL,
     INCLUDE_LOGS_ALL,
 })
@@ -51,11 +53,13 @@ class ModuleTaskEntry:
     panel: str = 'shared'
     stop_command: str = ''
     service_key: str = ''
+    optional: bool = False
 
 
 @dataclass
 class ModuleTasksAggregate:
     setup_full: list[ModuleTaskEntry] = field(default_factory=list)
+    setup_full_after_migrate: list[ModuleTaskEntry] = field(default_factory=list)
     start_all: list[ModuleTaskEntry] = field(default_factory=list)
     logs_all: list[ModuleTaskEntry] = field(default_factory=list)
     modules: list[str] = field(default_factory=list)
@@ -189,6 +193,7 @@ def _parse_tasks(path: Path, *, module_dir_name: str) -> list[ModuleTaskEntry]:
                 panel=panel,
                 stop_command=stop_command,
                 service_key=_service_key_from_label(label, module_dir_name),
+                optional=_yaml_truthy(raw.get('optional')),
             )
         )
     return entries
@@ -226,6 +231,8 @@ def aggregate_module_tasks(project_root: Path | str) -> ModuleTasksAggregate:
             agg.modules.append(entry.module)
         if INCLUDE_SETUP_FULL in entry.include_in:
             agg.setup_full.append(entry)
+        if INCLUDE_SETUP_FULL_AFTER_MIGRATE in entry.include_in:
+            agg.setup_full_after_migrate.append(entry)
         if INCLUDE_START_ALL in entry.include_in:
             agg.start_all.append(entry)
         if INCLUDE_LOGS_ALL in entry.include_in:
@@ -233,6 +240,7 @@ def aggregate_module_tasks(project_root: Path | str) -> ModuleTasksAggregate:
 
     agg.modules.sort()
     agg.setup_full.sort(key=_sort_key)
+    agg.setup_full_after_migrate.sort(key=_sort_key)
     agg.start_all.sort(key=_sort_key)
     agg.logs_all.sort(key=_sort_key)
     return agg
@@ -242,6 +250,8 @@ def tasks_for_target(project_root: Path | str, target: str) -> list[ModuleTaskEn
     agg = aggregate_module_tasks(project_root)
     if target == INCLUDE_SETUP_FULL:
         return list(agg.setup_full)
+    if target == INCLUDE_SETUP_FULL_AFTER_MIGRATE:
+        return list(agg.setup_full_after_migrate)
     if target == INCLUDE_START_ALL:
         return list(agg.start_all)
     if target == INCLUDE_LOGS_ALL:
@@ -261,6 +271,7 @@ def dump_module_tasks_json(project_root: Path | str, *, target: str | None = Non
         payload = {
             'modules': agg.modules,
             'setup_full': [asdict(t) for t in agg.setup_full],
+            'setup_full_after_migrate': [asdict(t) for t in agg.setup_full_after_migrate],
             'start_all': [asdict(t) for t in agg.start_all],
             'logs_all': [asdict(t) for t in agg.logs_all],
         }
@@ -296,6 +307,9 @@ def main(argv: list[str] | None = None) -> int:
     print(t('modules_list', items=', '.join(agg.modules) or t('modules_none')))
     print(t('setup_full_label', count=len(agg.setup_full)))
     for entry in agg.setup_full:
+        print(t('module_task_entry', module=entry.module, label=entry.label, command=entry.command))
+    print(t('setup_full_after_migrate_label', count=len(agg.setup_full_after_migrate)))
+    for entry in agg.setup_full_after_migrate:
         print(t('module_task_entry', module=entry.module, label=entry.label, command=entry.command))
     print(t('start_all_label', count=len(agg.start_all)))
     for entry in agg.start_all:

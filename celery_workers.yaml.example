@@ -5,6 +5,14 @@ workers:
     queues: all
     concurrency: 8
 
+  # Worker одного модуля (MODULE_RUNTIME=microservice):
+  # <name>:
+  #   description: "Worker очереди модуля"
+  #   hostname: "<name>_worker"
+  #   queues:
+  #     - <name>
+  #   concurrency: 2
+
 defaults:
   pool: threads
   loglevel: info

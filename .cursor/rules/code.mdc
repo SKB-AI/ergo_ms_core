@@ -2,75 +2,26 @@
 description: Общие правила кода — размер файлов, SOLID, Celery, импорты, Swagger, комментарии
 alwaysApply: true
 ---
+
 # Общие правила кода
 
-- Тесты — только по просьбе пользователя
-- Файл — не больше **700** строк; длиннее — разбивай **по границам** `def` / `class` / логическим модулям
-- SOLID, меньше дублирования
-- Тяжёлые задачи — **Celery**, пул потоков; в модуле — `config.py` CPU/GPU (по умолчанию GPU)
-- Импорты вверху файла; внутри модуля — относительные, из ядра — полные (`src.core...`)
+- Тесты модулей и точечные правки — только по просьбе пользователя. Правки развёртывания, `commands.conf`, служб ОС, docker/nginx, security стека и клиентского e2e — пиши и гоняй `ergoms system-test` по [`system-test.mdc`](system-test.mdc)
+- Файл — не больше **700** строк; длиннее — режь **по домену** (`def` / `class` / ответственность), не по номеру строки
+- SOLID, меньше дублирования; импорты вверху; внутри модуля — относительные, из ядра — `src.core...`
+- Тяжёлые задачи — **Celery**; в модуле — `config.py` CPU/GPU (по умолчанию GPU)
 - В командах и логах — без эмодзи
+- После задачи — убери лишний код и неиспользуемые импорты
 
-После задачи — проверь: лишний код, неиспользуемые импорты, соответствие правилам.
-
-## Разбиение больших файлов
-
-Лимит **700** строк — сигнал пересмотреть **границы ответственности**, не повод «нарезать файл пополам».
-
-### Как делать (осознанно)
-
-1. **Сначала назови роль каждого будущего файла** одной фразой (что он отвечает / что наружу). Если роли нет — не выноси.
-2. **Режь по домену**, не по размеру: ViewSet’ы по сущности, pipeline по фазе, i18n по locale, helpers отдельно от page-composable.
-3. Общие константы и типы — в **один** модуль (`*_constants.py` / `types.js`); не копируй preamble в каждый кусок.
-4. Каждый файл **сам** парсится (`ast.parse` / `python -m py_compile`) и импортируется **именованно**.
-5. Публичный API старого модуля сохрани **тонким facade** (`from .x import foo` + `__all__`), если снаружи уже есть импорты.
-6. После split — убери неиспользуемые импорты; проверь, что mid-file константы не «потерялись» между функциями.
-
-### Запрещено
-
-- рез по номеру строки (chop-at-N) и скрипты «разрежь файл, чтобы стало <700»;
-- «вырезать AST-диапазоны функций в новые файлы + один общий preamble» без проектирования ролей;
-- дублировать один и тот же блок констант/import во все части split;
-- обрыв `def` / `class` посередине с продолжением в другом файле;
-- склейка через `from .X import *` + `# noqa: F403`.
-
-```python
-# BAD — mid-function cut + star-import glue
-# a.py заканчивается на: for parent in current.parents:
-# b.py начинается с:         if (parent / "core").is_dir(): ...
-from .a import *  # noqa: F403
-from .b import *  # noqa: F403
-
-# BAD — механический split: в каждом файле копия CATEGORY_LABELS / LOOKUP_TABLE
-# link.py, dashboard.py, recalc.py — один и тот же preamble на 80 строк
-
-# GOOD — целые функции, явные импорты, общие константы отдельно
-from .market_analytics_constants import CATEGORY_LABELS, DEFAULT_LINK_MONTHS
-from .market_analytics_link import link_vacancy_skills
-from .deps_scanner import detect_project_root, load_toml
-from .deps_workspace import scan_scope, build_workspace_report
-```
-
-```text
-Чеклист перед завершением split
-1. У каждого файла есть ясная роль (docstring модуля / первая строка).
-2. Нет копипасты констант и «толстого» preamble.
-3. Импорты снаружи не сломаны (facade или обновлены call-site).
-4. ergoms / py_compile / импорт пакета без NameError на константах.
-5. Файлы ≤700 строк *после* осмысленной раскладки, не ценой дублей.
-```
-
-Проверка регрессий: `ergoms core-rules-check` (mid-indent / `ast.parse` в `core/api/src`).
+**Split:** сначала роль каждого файла; общие константы в один модуль; именованные импорты, не `from .x import *`. Не обрывай `def` / `class` посередине. Проверка: `ergoms core-rules-check` (mid-indent / `ast.parse`).
 
 ## Сериализаторы и Swagger
 
-- Не обращайся к `request.user` в полях сериализатора без проверки на None
-- Доступ к user — через `SerializerMethodField`
-- ViewSet с данными пользователя — `SwaggerSafeMixin` + фильтр в `get_queryset`
+- Не бери `request.user` в полях сериализатора без проверки на None — `SwaggerSafeSerializerMixin.get_safe_user()`
+- Новый ViewSet — `BaseModelViewSet`; фильтр выборки в `get_queryset` или `owner_field`
 
 ## Комментарии
 
-Только «почему», не «что». Без закомментированного мусора. Docstring — для публичного API и сложной логики.
+Только «почему», не «что». Docstring — для публичного API и сложной логики.
 
 ## Связанные правила
 
@@ -80,4 +31,4 @@ from .deps_workspace import scan_scope, build_workspace_report
 | Безопасность | [`security.mdc`](security.mdc) |
 | Celery | [`celery.mdc`](celery.mdc) |
 | Тесты | [`testing.mdc`](testing.mdc) |
-| Стиль документов | [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc) |
+| Системные тесты | [`system-test.mdc`](system-test.mdc) |

@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-SYSTEM_VERSION = '2.7.8'
-SYSTEM_VERSION_DISPLAY = '2.7.8'
+SYSTEM_VERSION = '3.0.0'
+SYSTEM_VERSION_DISPLAY = '3.0'
 
 
 def _project_root() -> Path:

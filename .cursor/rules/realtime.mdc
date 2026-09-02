@@ -66,7 +66,7 @@ class MyConsumer(AsyncWebsocketConsumer):
 
 Клиент получает `REALTIME_*` из merge `.env` + `env/*.env` при сборке и с API (`GET /api/realtime/config/`) после входа.
 
-Развёртывание с Nginx: location `/api/realtime/stream/` — `proxy_buffering off`, `proxy_read_timeout 3600s` — см. `core/deployment/nginx/ergo_ms.conf.template`.
+Развёртывание с Nginx: `/api/realtime/stream/` и regex `^/api/.+/stream/` — `proxy_buffering off`, `proxy_read_timeout 3600s` (модульные chat SSE без имён модулей в ядре) — см. `core/deployment/nginx/render_common.py`.
 
 ## Topics (SSE subscribe)
 

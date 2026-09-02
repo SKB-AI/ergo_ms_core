@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Артефакты только в корне проекта
 
-Данные ERGO MS — **внутри** корня репозитория. Вне корня — только регистрация служб ОС (Windows SCM / `systemctl link|enable`).
+Данные ERGO MS — **внутри** корня репозитория. Вне корня — только регистрация служб ОС (Windows SCM / `systemctl link|enable`) и симлинк CLI `/usr/local/bin/ergoms`.
 
 Пути: [`project_layout.py`](../../core/deployment/project_layout.py). Детали и примеры — [`project-root-artifacts-details.mdc`](project-root-artifacts-details.mdc).
 
@@ -24,6 +24,7 @@ alwaysApply: true
 | NSSM `install` / SCM `ergo_ms_*` | автозапуск; бинарь NSSM в `virtual_env/packages/nssm` |
 | `systemctl link` | unit остаётся в `wrappers/systemd/` |
 | Docker entrypoint в `/usr/local/lib/ergo-ms` | вне bind-mount `/app` (CRLF); CLI — из `/app/core/deployment/bin` |
+| `/usr/local/bin/ergoms` (симлинк) | чтобы `sudo` видел CLI; сам скрипт остаётся в `core/deployment/bin` |
 
 ## Связанные правила
 

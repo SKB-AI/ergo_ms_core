@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -29,8 +30,17 @@ from lifecycle.orchestrator import DeploymentOrchestrator  # noqa: E402
 from docker_stats import add_stats_arguments, run_stats  # noqa: E402
 
 
+def resolve_cli_project_root() -> Path:
+    env_root = os.environ.get('ERGOMS_PROJECT_ROOT', '').strip()
+    if env_root:
+        candidate = Path(env_root).resolve()
+        if (candidate / 'core' / 'deployment').is_dir():
+            return candidate
+    return PROJECT_ROOT.resolve()
+
+
 def cmd_up(args: argparse.Namespace) -> int:
-    root = PROJECT_ROOT.resolve()
+    root = resolve_cli_project_root()
     orchestrator = DeploymentOrchestrator(root)
     return orchestrator.run_recipe(
         'docker-up',
@@ -40,7 +50,7 @@ def cmd_up(args: argparse.Namespace) -> int:
     )
 
 def cmd_down(args: argparse.Namespace) -> int:
-    return DeploymentOrchestrator(PROJECT_ROOT.resolve()).run_recipe(
+    return DeploymentOrchestrator(resolve_cli_project_root()).run_recipe(
         'docker-down',
         runtime='docker',
         docker_mode=args.mode,
@@ -48,7 +58,7 @@ def cmd_down(args: argparse.Namespace) -> int:
     )
 
 def cmd_ps(args: argparse.Namespace) -> int:
-    return DeploymentOrchestrator(PROJECT_ROOT.resolve()).run_recipe(
+    return DeploymentOrchestrator(resolve_cli_project_root()).run_recipe(
         'docker-ps',
         runtime='docker',
         docker_mode=args.mode,
@@ -59,7 +69,7 @@ def cmd_logs(args: argparse.Namespace) -> int:
     extra = ['-f'] if args.follow else []
     if args.service:
         extra.append(args.service)
-    return DeploymentOrchestrator(PROJECT_ROOT.resolve()).run_recipe(
+    return DeploymentOrchestrator(resolve_cli_project_root()).run_recipe(
         'docker-logs',
         runtime='docker',
         docker_mode=args.mode,
@@ -67,17 +77,18 @@ def cmd_logs(args: argparse.Namespace) -> int:
     )
 
 def cmd_build(args: argparse.Namespace, *, skip_if_present: bool = False) -> int:
-    root = PROJECT_ROOT.resolve()
+    root = resolve_cli_project_root()
     orchestrator = DeploymentOrchestrator(root)
     if skip_if_present and docker_ops.should_skip_build(load_merged_env(root)):
         print(format_console('skip', t('docker_images_already_built')))
         return 0
     extra = list(args.extra or [])
+    options = {'build_extra_args': extra, 'compose_extra_args': extra} if extra else None
     return orchestrator.run_recipe(
         'docker-build',
         runtime='docker',
         docker_mode=args.mode,
-        options={'compose_extra_args': extra},
+        options=options,
     )
 
 def cmd_exec_api_shell(_: argparse.Namespace) -> int:
@@ -89,15 +100,15 @@ def cmd_exec_api_shell(_: argparse.Namespace) -> int:
 
 def cmd_install_deps(args: argparse.Namespace | None = None) -> int:
     mode = getattr(args, 'mode', None) if args is not None else None
-    return DeploymentOrchestrator(PROJECT_ROOT.resolve()).docker_install_deps(docker_mode=mode)
+    return DeploymentOrchestrator(resolve_cli_project_root()).docker_install_deps(docker_mode=mode)
 
 def cmd_install_npm_deps(args: argparse.Namespace | None = None) -> int:
     mode = getattr(args, 'mode', None) if args is not None else None
-    return DeploymentOrchestrator(PROJECT_ROOT.resolve()).docker_install_npm(docker_mode=mode)
+    return DeploymentOrchestrator(resolve_cli_project_root()).docker_install_npm(docker_mode=mode)
 
 def cmd_migrate(args: argparse.Namespace | None = None) -> int:
     mode = getattr(args, 'mode', None) if args is not None else None
-    return DeploymentOrchestrator(PROJECT_ROOT.resolve()).docker_migrate(docker_mode=mode)
+    return DeploymentOrchestrator(resolve_cli_project_root()).docker_migrate(docker_mode=mode)
 
 def _confirm_docker_clean(*, assume_yes: bool) -> bool:
     if assume_yes:
@@ -136,7 +147,7 @@ def cmd_clean(args: argparse.Namespace) -> int:
         print(format_console('error', t('docker_not_found_install')), file=sys.stderr)
         return 1
 
-    root = PROJECT_ROOT.resolve()
+    root = resolve_cli_project_root()
     print(format_console('info', t('docker_clean_stopping')))
     cmd, cwd = docker_ops.build_compose_cmd(
         'down',
@@ -156,7 +167,7 @@ def cmd_clean(args: argparse.Namespace) -> int:
 def cmd_init(args: argparse.Namespace) -> int:
     extra = list(args.extra or [])
     options = {'build_extra_args': extra} if extra else None
-    return DeploymentOrchestrator(PROJECT_ROOT.resolve()).run_recipe(
+    return DeploymentOrchestrator(resolve_cli_project_root()).run_recipe(
         'docker-init',
         runtime='docker',
         docker_mode=args.mode,

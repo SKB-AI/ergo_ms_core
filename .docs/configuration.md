@@ -23,9 +23,10 @@ ERGO_DB=portable_postgres
 | `ERGO_EMAIL` | `none` \| `smtp` | исходящая почта; SMTP — `env/smtp.env` |
 | `ERGO_MEDIA` | `local` \| `remote` | доступ core/api к файлам; детали — `env/media.env` |
 | `ERGO_REALTIME` | `websocket` \| `sse` \| `http_polling` | транспорт событий клиенту; детали — `env/realtime.env` |
+| `ERGO_SEARCH_ENABLED` | `true` \| `false` | Meilisearch / BM25; детали — `env/search.env` |
 | `ERGO_ENV` | `development` \| `production` (коротко `dev` \| `prod`) | режим API, клиента и media_api |
 
-Детали — шаблоны в [`env/`](../env/) (`*.env.example`: nginx, docker, jupyter, smtp, logging, mcp, media, realtime, cache, celery). Порядок загрузки: `.env` → `env/*.env` → `modules/**/.env`.
+Детали — шаблоны в [`env/`](../env/) (`*.env.example`: nginx, docker, jupyter, smtp, logging, mcp, media, realtime, cache, celery, search). Порядок загрузки: `.env` → `env/*.env` → `modules/**/.env`.
 
 Для локальной разработки обычно хватает режимов по умолчанию и минимального набора API/CLIENT (см. `.env.example`). Почту можно не настраивать при `ERGO_EMAIL=none`.
 
@@ -33,7 +34,7 @@ ERGO_DB=portable_postgres
 
 ## Файл `databases.yaml`
 
-Если файла ещё нет, скопируйте `databases.yaml.example` в `databases.yaml`. Для начала работы нужна хотя бы секция **`default`** — основная база приложения. Engine секции `default` при заданном `ERGO_DB` выставляет loader (`portable_postgres` → `postgresql`); host/user/password/port/name задаёте здесь.
+Если файла ещё нет, скопируйте `databases.yaml.example` в `databases.yaml`. Для начала работы нужна хотя бы секция **`default`** — основная база приложения. Engine секции `default` при заданном `ERGO_DB` выставляет loader (`portable_postgres` → `postgresql`); host/port/name задаёте здесь. При `ERGO_DB=portable_postgres` пустые или шаблонные `user`/`password` заполняются уникальными значениями при `setup-full` / `install-postgres`, пока кластер ещё не создан.
 
 ```yaml
 databases:
@@ -41,7 +42,7 @@ databases:
     engine: "postgresql"
     name: "ergo_ms"
     user: "postgres"
-    password: "admin"
+    password: ""
     host: "127.0.0.1"
     port: 5433
 
@@ -49,13 +50,15 @@ databases:
     engine: "redis"
     host: "127.0.0.1"
     port: 6379
+    user: ""
+    password: ""
     db_channel: 0
     db_cache: 1
     db_celery_broker: 2
     db_celery_result: 3
 ```
 
-Секция **`redis`** используется при `ERGO_BROKER=redis` (кэш, channel layer, Celery). Дополнительные SQL-базы — новые секции под `databases:` (как `analytics`).
+Секция **`redis`** нужна при `ERGO_BROKER=redis` (кэш, channel layer, Celery). Если её ещё нет в уже существующем `databases.yaml`, `setup-full`, `install-redis` и запись секретов режимов дописывают её из example, не затирая `default`. Пустые `user`/`password` заполняются уникальными значениями, пока в `redis.conf` нет `requirepass`; затем conf пересобирается из yaml. Дополнительные SQL-базы — новые секции под `databases:` (как `analytics`).
 
 Убедитесь, что основная база создана и пользователь имеет к ней доступ. После правок примените миграции: `ergoms db-migrate`.
 
@@ -208,9 +211,9 @@ CELERY_BROKER_BACKEND=redis
 
 ## Docker Compose
 
-Переменные **`DOCKER_*`** — секция в `.env.example`. Порты публикуются из `API_PORT`, `CLIENT_PORT`, `MEDIA_API_BIND_PORT` и др.; параметры БД — из `databases.yaml` (при `DOCKER_DATABASE=container` хост `localhost` подменяется на сервис `postgres` внутри compose).
+Переменные **`DOCKER_*`** — [`env/docker.env.example`](../env/docker.env.example), не корневой `.env`. Режим стека — `ERGO_RUNTIME=docker` в корневом `.env`. Порты публикуются из `API_PORT`, `CLIENT_PORT`, `MEDIA_API_BIND_PORT` и др.; параметры БД — из `databases.yaml` (при `DOCKER_DATABASE=container` хост `localhost` подменяется на сервис `postgres` внутри compose).
 
-В `.env` задайте `DOCKER_ENABLED=true`, режим `DOCKER_MODE` (`dev` / `prod`) и profiles (`DOCKER_PROFILE_POSTGRES`, `DOCKER_PROFILE_NGINX`, `DOCKER_PROFILE_JUPYTER`). Первый запуск: `ergoms docker-init`.
+В `env/docker.env` задайте режим `DOCKER_MODE` (`dev` / `prod`) и profiles (`DOCKER_PROFILE_POSTGRES`, `DOCKER_PROFILE_NGINX`, `DOCKER_PROFILE_JUPYTER`). Первый запуск: `ergoms docker-init`.
 
 Скрипты не изменяют корневой `.env` — генерируют только артефакты в `core/deployment/docker/`. Подробнее — [docker.md](docker.md).
 
@@ -225,7 +228,7 @@ CELERY_BROKER_BACKEND=redis
 
 ## Совместная работа через Live Share
 
-Если нужно показать проект коллеге в реальном времени, подойдёт расширение [Live Share](https://marketplace.visualstudio.com/items?itemName=MS-vsliveshare.vsliveshare) для VS Code или Cursor. У участников сеанса должны быть доступны порты API и клиента из вашего `.env` — обычно это 8000 и 8001.
+Если нужно показать проект коллеге в реальном времени, подойдёт расширение [Live Share](https://marketplace.visualstudio.com/items?itemName=MS-vsliveshare.vsliveshare) для VS Code или Cursor. Доступ гостя задаёт [`.vsls.json`](../.vsls.json): всё из `.gitignore` закрыто полностью (не только скрыто в дереве), плюс явно исключены рабочие `.env`, `env/*.env`, `databases.yaml`, ключи TLS и `redis.conf`. Шаблоны `*.example` гостю видны. У участников сеанса должны быть доступны порты API и клиента из вашего `.env` — обычно это 8000 и 8001.
 
 ## См. также
 

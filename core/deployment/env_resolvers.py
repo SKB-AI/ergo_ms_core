@@ -76,6 +76,10 @@ def resolve_nginx_vars(values: dict[str, str]) -> dict[str, str]:
         'NGINX_SERVER_NAME': server_name,
         'NGINX_LISTEN_HOST': listen_host,
         'NGINX_LISTEN_PORT': listen_port,
+        # cmd_render/_rewrite_site_conf выбирают шаблон и SSL-переменные по этому
+        # полю в РЕЗУЛЬТАТЕ resolve_nginx_vars, а не по исходному values —
+        # без него HTTPS-флаг из .env терялся и nginx падал на HTTP-шаблон.
+        'NGINX_USE_HTTPS': 'true' if use_https else 'false',
     }
     if ssl_cert:
         resolved['ERGO_SSL_CERT'] = ssl_cert

@@ -1,5 +1,10 @@
 ---
 description: Клиент Vue — i18n ru/en, toast, undo toast, confirm, импорты, компоненты ядра
+globs:
+  - "core/client/**/*.vue"
+  - "core/client/**/*.js"
+  - "modules/*/client/**/*.vue"
+  - "modules/*/client/**/*.js"
 alwaysApply: false
 ---
 # Клиент (Vue)
@@ -50,7 +55,7 @@ showSuccess(tGlobal('common.saved'))
 
 ## Toast-уведомления
 
-Единый слой — `@/js/utils/toast.js`. **Не** импортируй `vue-toastification` напрямую (кроме ядра: `main.js`, `toast.js`).
+Единый слой — `@/js/utils/toast.js`. **Не** импортируй `vue-sonner` напрямую (кроме ядра: `toast.js`, `ErgoToaster.vue`).
 
 ```javascript
 import { useToast, showSuccess, showError, showUndoableSuccess, handleApiError } from '@/js/utils/toast.js'
@@ -117,6 +122,8 @@ try { ... } catch (e) { await handleApiError(e, tGlobal('errors.api.generic')) }
 | `CLIENT_TOAST_UNDO_ENABLED` | `true` | кнопка «Отменить» во всплывающем success |
 | `CLIENT_TOAST_UNDO_STACK_MAX` | `3` | глубина стека отмен при `stackMax` (мин. 1) |
 
+Мягкая отмена через кнопку в success-toast — `showUndoableSuccess` (флаг `CLIENT_TOAST_UNDO_ENABLED`, по умолчанию выкл.): [`toast-undo.mdc`](toast-undo.mdc).
+
 Разбор ошибок API: `@/js/utils/apiErrorMessage.js` (`extractApiError`, `parseApiErrorData`); toast — `handleApiError`.
 
 ## Подтверждения действий
@@ -163,9 +170,9 @@ import { endpoints } from '@/js/api/endpoints'
 
 ## Настройки из `.env`
 
-- В `.env` — **`CLIENT_*`**, общие **`API_*`**, **`DISABLED_MODULES`**, **`REALTIME_*`**
-- В коде — **`import { clientEnv } from '@/js/clientEnv.js'`**, не `import.meta.env` и не префикс `VITE_`
-- Новая настройка модуля: `CLIENT_<МОДУЛЬ>_*` в корневом `.env` + поле в `clientEnv.js` + `buildClientEnvDefines()` в `core/client/vite.config.js`
+- В корневом `.env` — **`CLIENT_*`**, общие **`API_*`**, **`DISABLED_MODULES`**. **`REALTIME_*`** — [`env/realtime.env.example`](../../env/realtime.env.example); фрагменты — [`env-examples.mdc`](env-examples.mdc)
+- В коде ядра — **`import { clientEnv } from '@/js/clientEnv.js'`**, не `import.meta.env` и не префикс `VITE_`
+- Новая настройка модуля: `CLIENT_<МОДУЛЬ>_*` в корневом `.env` **или** `modules/<имя>/.env`; в модуле читай через **локальный** `client/js/clientEnv.js`, не через ядровой `clientEnv.js`. Общие ключи ядра — поле в `clientEnv.js` + `buildClientEnvDefines()` в `core/client/vite.config.js`
 
 ```javascript
 import { clientEnv } from '@/js/clientEnv.js'
@@ -219,7 +226,9 @@ watchState(() => {
 | Компоненты UI | [`components.mdc`](components.mdc) |
 | Темы, шрифты | [`themes.mdc`](themes.mdc) |
 | Модалки, confirm | [`modal-center.mdc`](modal-center.mdc) |
+| Undo в toast | [`toast-undo.mdc`](toast-undo.mdc) |
 | Журнал отмен (`undoAudit`, `reportUndo`) | [`audit.mdc`](audit.mdc) |
 | Ошибки API | [`log-error.mdc`](log-error.mdc) |
 | Права маршрутов (UX) | [`permission_rules.mdc`](permission_rules.mdc) |
 | Модули, мост | [`modules.mdc`](modules.mdc) |
+| Шаблоны `.env` и `env/` | [`env-examples.mdc`](env-examples.mdc) |

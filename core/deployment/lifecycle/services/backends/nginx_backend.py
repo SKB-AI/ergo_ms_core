@@ -12,7 +12,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from lifecycle.services.backends import _bootstrap  # noqa: F401
+_DEPLOYMENT_DIR = Path(__file__).resolve().parents[3]
+_SCRIPTS_DIR = _DEPLOYMENT_DIR / 'scripts'
+for _path in (_DEPLOYMENT_DIR, _SCRIPTS_DIR):
+    _path_str = str(_path)
+    if _path_str not in sys.path:
+        sys.path.insert(0, _path_str)
 
 from cli_locale import t  # noqa: E402
 from console_tags import format_console  # noqa: E402
@@ -85,10 +90,37 @@ def cmd_test(root: Path) -> int:
     return result.returncode
 
 
+def _site_template(root: Path, *, use_https: bool) -> Path:
+    nginx_dir = root / 'core' / 'deployment' / 'nginx'
+    https_template = nginx_dir / 'ergo_ms.conf.template'
+    http_template = nginx_dir / 'ergo_ms_http.conf.template'
+    if use_https and https_template.is_file():
+        return https_template
+    return http_template
+
+
+def _rewrite_site_conf(root: Path) -> int:
+    """Пересобрать ergo_ms.conf из env (NGINX_API_UPSTREAM, NGINX_CLIENT_UPSTREAM, NGINX_MEDIA_UPSTREAM, модули)."""
+    from env_file_loader import load_project_env
+    from env_resolvers import resolve_nginx_vars
+    from render_common import use_https as nginx_use_https
+
+    values = resolve_nginx_vars(load_project_env(root))
+    use_https = nginx_use_https(values)
+    template = _site_template(root, use_https=use_https)
+    nginx_dir, _exe, _main = _nginx_paths(root)
+    output = nginx_dir / 'conf' / f'{NGINX_CONF_NAME}.conf'
+    return cmd_render(root, template=template, output=output)
+
+
 def cmd_reload(root: Path) -> int:
     if not _nginx_installed(root):
         print(format_console('error', t('nginx_not_installed_hint')), file=sys.stderr)
         return 1
+
+    rewritten = _rewrite_site_conf(root)
+    if rewritten != 0:
+        return rewritten
 
     nginx_dir, exe, main_conf = _nginx_paths(root)
     main_conf_arg = _main_conf_arg(main_conf)
@@ -103,14 +135,24 @@ def cmd_reload(root: Path) -> int:
         print(format_console('error', t('config_check_failed')), file=sys.stderr)
         return test.returncode
 
-    if os.name != 'nt' and _is_nginx_service_active():
-        print(format_console('info', t('reloading_nginx_service')))
-        reload_cmd = ['systemctl', 'reload', NGINX_LINUX_SERVICE]
-        if hasattr(os, 'geteuid') and os.geteuid() != 0 and shutil_which('sudo'):
-            reload_cmd = ['sudo', *reload_cmd]
-        subprocess.run(reload_cmd, check=False)
-        print(format_console('ok', t('nginx_reloaded')))
-        return 0
+    if os.name != 'nt' and shutil_which('systemctl'):
+        sudo = hasattr(os, 'geteuid') and os.geteuid() != 0 and shutil_which('sudo')
+        if _is_nginx_service_active():
+            print(format_console('info', t('reloading_nginx_service')))
+            reload_cmd = ['systemctl', 'reload', NGINX_LINUX_SERVICE]
+            if sudo:
+                reload_cmd = ['sudo', *reload_cmd]
+            subprocess.run(reload_cmd, check=False)
+            print(format_console('ok', t('nginx_reloaded')))
+            return 0
+        print(format_console('info', t('reloading_nginx')))
+        start_cmd = ['systemctl', 'start', NGINX_LINUX_SERVICE]
+        if sudo:
+            start_cmd = ['sudo', *start_cmd]
+        started = subprocess.run(start_cmd, check=False)
+        if started.returncode == 0:
+            print(format_console('ok', t('nginx_reloaded')))
+            return 0
 
     print(format_console('info', t('reloading_nginx')))
     subprocess.run(

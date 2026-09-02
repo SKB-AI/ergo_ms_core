@@ -1,8 +1,8 @@
 ﻿"""
-Ротация логов nginx, Redis и client-dev по размеру (настройки из .env).
+Ротация логов nginx, Redis, client-dev, LLM serve, Jupyter, Meilisearch, portable PostgreSQL и CLI ergoms по размеру.
 
 nginx: переименование + nginx -s reopen (открывает новые файлы по конфигу).
-redis / client-dev: copytruncate (процесс держит тот же дескриптор).
+Остальные: copytruncate (процесс держит тот же дескриптор).
 """
 
 from __future__ import annotations
@@ -150,6 +150,48 @@ def rotate_infra_logs(root: Path, *, dry_run: bool = False, verbose: bool = Fals
             log_file_path('CLIENT_DEV', root),
             int(settings['client_dev_max_bytes']),
             int(settings['client_dev_backup_count']),
+            'copytruncate',
+        ),
+        (
+            'ollama',
+            log_file_path('OLLAMA', root),
+            int(settings['copytruncate_max_bytes']),
+            int(settings['copytruncate_backup_count']),
+            'copytruncate',
+        ),
+        (
+            'jupyter',
+            log_file_path('JUPYTER', root),
+            int(settings['copytruncate_max_bytes']),
+            int(settings['copytruncate_backup_count']),
+            'copytruncate',
+        ),
+        (
+            'meilisearch',
+            log_file_path('MEILISEARCH', root),
+            int(settings['copytruncate_max_bytes']),
+            int(settings['copytruncate_backup_count']),
+            'copytruncate',
+        ),
+        (
+            'postgres',
+            log_file_path('POSTGRES', root),
+            int(settings['copytruncate_max_bytes']),
+            int(settings['copytruncate_backup_count']),
+            'copytruncate',
+        ),
+        (
+            'setup-full',
+            log_file_path('SETUP_FULL', root),
+            int(settings['copytruncate_max_bytes']),
+            int(settings['copytruncate_backup_count']),
+            'copytruncate',
+        ),
+        (
+            'ergoms',
+            log_file_path('ERGOMS', root),
+            int(settings['copytruncate_max_bytes']),
+            int(settings['copytruncate_backup_count']),
             'copytruncate',
         ),
     ]

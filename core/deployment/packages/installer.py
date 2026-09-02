@@ -71,7 +71,13 @@ def is_installed(root: Path, spec: PackageSpec) -> bool:
     if not rel:
         dest = package_dir(root, spec.dest)
         return dest.is_dir() and any(dest.iterdir())
-    return (package_dir(root, spec.dest) / rel).is_file()
+    marker = package_dir(root, spec.dest) / rel
+    if not marker.is_file():
+        return False
+    try:
+        return marker.stat().st_size > 0
+    except OSError:
+        return False
 
 
 def status_for(root: Path, spec: PackageSpec) -> PackageStatus:
@@ -149,7 +155,7 @@ def install_package(
         )
         return 0
 
-    if is_installed(root, spec) and not force:
+    if is_installed(root, spec) and not force and not spec.always_run:
         print(format_console('skip', f'{name} уже установлен: {package_dir(root, spec.dest)}'))
         return 0
 

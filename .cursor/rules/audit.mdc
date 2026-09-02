@@ -36,10 +36,9 @@ Select-String -Path logs\audit.log -Pattern 'action=auth\.'
 
 ```python
 from src.core.audit.mixin import AuditedModelMixin
-from src.core.utils.mixins import SwaggerSafeMixin
-from rest_framework import viewsets
+from src.core.utils.base import BaseModelViewSet
 
-class CourseViewSet(AuditedModelMixin, SwaggerSafeMixin, viewsets.ModelViewSet):
+class CourseViewSet(AuditedModelMixin, BaseModelViewSet):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
     audit_module = '<name>'              # опц.; по умолчанию app_label модели

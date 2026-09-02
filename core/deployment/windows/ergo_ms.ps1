@@ -104,6 +104,8 @@ $LibPath = Join-Path $PSScriptRoot "lib"
 
 . (Join-Path $LibPath "lifecycle.ps1")
 
+. (Join-Path $LibPath "cli_log.ps1")
+
 
 
 Initialize-ErgomsConsoleEncoding
@@ -129,6 +131,8 @@ function Load-HeavyModules {
     . (Join-Path $LibPath "nginx.ps1")
 
     . (Join-Path $LibPath "redis.ps1")
+
+    . (Join-Path $LibPath "meilisearch.ps1")
 
     . (Join-Path $LibPath "postgres.ps1")
 
@@ -214,6 +218,17 @@ function Main {
 
         }
 
+    }
+
+    if (-not $projectRoot) {
+        try {
+            $projectRoot = Get-ProjectRoot -ProvidedRoot $Root
+        }
+        catch {
+        }
+    }
+    if ($projectRoot) {
+        Attach-CliSessionLog -Root $projectRoot -Command $Command
     }
 
     
@@ -392,7 +407,7 @@ function Main {
 
 
 
-    # Handle <module>:poetry commands (e.g., ergoms bi_analysis:poetry add requests ">=2.28.0")
+    # Handle <module>:poetry commands (e.g., ergoms <module>:poetry add requests ">=2.28.0")
 
     if ($Command -match '^([a-zA-Z0-9_-]+):poetry$') {
 
@@ -619,6 +634,11 @@ function Main {
             
 
             $projectRoot = Get-ProjectRoot -ProvidedRoot $Root
+
+            if ($serviceName -in @('setup-full', 'setup', 'ergoms')) {
+                Show-ServiceLogs -ServiceName $serviceName -Lines $lines -ProjectRoot $projectRoot
+                return
+            }
 
             $serviceNames = Get-ServiceNames -ProjectRoot $projectRoot
 

@@ -7,7 +7,9 @@ alwaysApply: false
 ## Запуск
 
 - Worker: `ergoms start-worker` (или `--worker=<имя>`)
-- Планировщик: `ergoms start-beat`
+- Worker модуля при `MODULE_RUNTIME=microservice`: `ergoms start-worker --module=<name>` — все очереди этого модуля (`modules.<name>.*`), не все очереди хоста; см. [`modularization.mdc`](modularization.mdc)
+- Планировщик ядра: `ergoms start-beat` (на хосте ядра; в microservice не ставит задачи `MICROSERVICE_MODULES`)
+- Планировщик модуля: `ergoms start-beat --module=<name>` и OS-служба `--kind=beat`, если есть `api/**/celery_beat_config.py`
 - Остановка: `ergoms stop-worker`, `ergoms stop-beat`
 
 Worker и Beat должны смотреть на **один** брокер. Источник настроек:
@@ -20,12 +22,15 @@ Worker и Beat должны смотреть на **один** брокер. И�
 
 В Docker worker'ы поднимаются из **`celery_workers.yaml`** через **`ergoms docker-gen-workers`** → `docker-compose.workers.generated.yml`. При изменении имён, очередей или числа worker'ов — обнови yaml и перегенерируй compose; чеклист — [`docker.mdc`](docker.mdc).
 
+Динамический concurrency (бюджет RAM/CPU/GPU, hook `task_footprint.yaml`) — [`celery-balance.mdc`](celery-balance.mdc): `ergoms celery-balance --dry-run`, режим `CELERY_BALANCE=auto|recommend|off` (дефолт `auto`). Yaml не переписывается.
+
 ## Где писать код
 
 **В модуле**, не в ядре (в ядре только инфраструктура, например отправка писем):
 
 - `modules/<имя>/api/tasks.py` — задачи с `@shared_task`
 - `modules/<имя>/api/celery_config.py` — очереди и маршруты
+- `modules/<имя>/task_footprint.yaml` — ожидаемый footprint задач для `ergoms celery-balance` (опционально)
 - `modules/<имя>/api/celery_beat_config.py` — расписание (если нужно)
 
 Пример маршрута:
@@ -33,6 +38,8 @@ Worker и Beat должны смотреть на **один** брокер. И�
 ```python
 'modules.<name>.api.tasks.*': {'queue': '<name>'}
 ```
+
+Вложенные Django-apps могут объявить свои очереди. Worker `--module=<name>` слушает их все. Не рассчитывай, что общий Beat на другом сервере увидит `celery_beat_config.py` модуля, которого там нет.
 
 Регистрация вручную не нужна — подхватывает `CeleryModuleManager`.
 
@@ -61,6 +68,8 @@ ergoms logs celery-beat notifications 200
 | Брокер в databases.yaml и Redis | [`.docs/configuration.md`](../../.docs/configuration.md) |
 | Redis, nginx | [`deployment-infra.mdc`](deployment-infra.mdc) |
 | Docker, workers в compose | [`docker.mdc`](docker.mdc) |
+| Балансировщик concurrency | [`celery-balance.mdc`](celery-balance.mdc) |
+| Вынос модуля в сервис | [`modularization.mdc`](modularization.mdc) |
 
 ## Не делай
 

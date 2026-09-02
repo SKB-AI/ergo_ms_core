@@ -26,6 +26,7 @@
   "task.multiTerminal.group": "Terminal group for management",
   "task.multiTerminal.delay": "Delay between starts (ms)",
   "task.multiTerminal.hideControlTerminal": "Hide the control terminal after starting child terminals",
+  "task.multiTerminal.launchAs": "Launch children as VS Code tasks (task) or plain terminals without Running Tasks/toasts (terminal)",
   "task.ergoModule.label": "Task name in Run Task",
   "task.ergoModule.detail": "Short task description",
   "task.ergoModule.command": "ergoms … command",

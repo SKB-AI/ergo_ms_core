@@ -46,6 +46,9 @@ Add-Content .env "ERGO_BROKER=redis"
 **Допустимо:**
 
 - `ConfigScaffolder` создаёт `.env` и `env/*.env` **один раз** из `*.example`, если файла ещё нет (`setup-full`)
+- `ergoms env --reset-from-example` по **явной** команде заменяет рабочие `.env`, `databases.yaml` и `celery_workers.yaml` шаблонами. Уже заданные ключи, пароли и токены в `.env` не затираются. В `databases.yaml` любые непустые `user`/`password` возвращаются после копирования шаблона, в том числе шаблонные вроде `admin` и секции вне минимального набора. После записи `ensure_mode_secrets` заполняет только пустые поля, не подменяя уже заданные учётки. Требует подтверждения или `--yes`.
+- `ensure_mode_secrets` записывает **только пустые** криптоключи текущих режимов (`API_SECRET_KEY`, `API_JWT_SIGNING_KEY`, при необходимости `API_JUPYTER_TOKEN`, `MEDIA_API_INTERNAL_KEY`, `MEILI_MASTER_KEY`, `BRIDGE_INTERNAL_TOKEN`). Существующее значение не трогает; значение в лог не печатает. Не пароли SMTP/MCP и не ключи внешних API.
+- `ensure_infra_credentials` записывает в `databases.yaml` уникальные `user`/`password` для portable Postgres (`ERGO_DB=portable_postgres`) и Redis (`ERGO_BROKER=redis`), только если значение пустое или шаблонное **и** кластер Postgres ещё не создан / в `redis.conf` ещё нет `requirepass`. При `ERGO_BROKER=redis` дописывает отсутствующую секцию `redis`, не затирая остальные. Существующие учётные данные не трогает; значение в лог не печатает.
 
 ## Базовый пример (runtime вместо автозаписи)
 

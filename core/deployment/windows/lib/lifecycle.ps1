@@ -71,7 +71,7 @@ function Invoke-LifecycleRunner {
         }
     }
 
-    $argv = @($runner, $Recipe) + $ExtraArgs
+    $argv = @($runner, $Recipe, '--project-root', $Root) + $ExtraArgs
     $pyExe = Get-LifecyclePythonExe -Root $Root
 
     if ($pyExe) {

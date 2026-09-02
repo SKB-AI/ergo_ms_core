@@ -1,6 +1,7 @@
-# syntax=docker/dockerfile:1.4
 # ERGO MS — общий Python-образ (API, media_api, Celery, Jupyter)
-FROM python:3.12-slim-bookworm AS base
+# Без # syntax=docker/dockerfile:… — иначе BuildKit тянет frontend с Hub при каждой сборке.
+ARG PYTHON_BASE=python:3.12-slim-bookworm
+FROM ${PYTHON_BASE} AS base
 
 ARG ERGO_DOCKER_DEPS_CACHE=internal
 
@@ -15,14 +16,19 @@ ENV PYTHONUNBUFFERED=1 \
     POETRY_CACHE_DIR=/tmp/poetry-cache \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        curl \
-        git \
-        libpq-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir "poetry==${POETRY_VERSION}"
+# Повторная сборка от ergo_ms-python:local не ходит в Debian/PyPI, если poetry уже есть.
+RUN if command -v poetry >/dev/null 2>&1; then \
+      poetry --version; \
+    else \
+      apt-get update \
+      && apt-get install -y --no-install-recommends \
+          build-essential \
+          curl \
+          git \
+          libpq-dev \
+      && rm -rf /var/lib/apt/lists/* \
+      && pip install --no-cache-dir "poetry==${POETRY_VERSION}"; \
+    fi
 
 WORKDIR /app
 
@@ -34,12 +40,16 @@ RUN mkdir -p core/api core/media_api modules virtual_env/python virtual_env/cach
 
 RUN --mount=type=cache,id=ergo_poetry_cache,target=/tmp/poetry-cache,sharing=locked \
     sh -c 'if [ "$ERGO_DOCKER_DEPS_CACHE" != "off" ]; then \
-      poetry install --no-root --no-ansi \
-      && poetry run python -c "import django; print(\"django ok\")"; \
+      if poetry run python -c "import django" >/dev/null 2>&1; then \
+        echo "django ok (cached)"; \
+      else \
+        poetry install --no-root --only main --no-ansi \
+        && poetry run python -c "import django; print(\"django ok\")"; \
+      fi; \
     fi'
 
 RUN sh -c 'if [ "$ERGO_DOCKER_DEPS_CACHE" = "off" ]; then \
-      poetry install --no-root --no-ansi \
+      poetry install --no-root --only main --no-ansi \
       && poetry run python -c "import django; print(\"django ok\")"; \
     fi'
 

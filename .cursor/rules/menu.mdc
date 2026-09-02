@@ -20,6 +20,7 @@ alwaysApply: false
 - **Маршруты Vue** — `modules/<имя>/client/js/routes.js` (обязательно для навигации)
 - **Рантайм** — `UserMenuView` → `getUserMenu()` → `MenuList` (поля order/parent материализованы из layout)
 - Порядок, видимость, разделители — в CMS (`MenuPanel.vue`); при reorder/restore layout сохраняется
+- Доступ пунктов и разделителей — `allowed_roles` / `allowed_role_groups` (пустые = всем); user-menu фильтрует оба
 - Свёрнутость sidebar — UI-преференс в `localStorage` (`menu-sidebar-collapsed`), см. [`security-details.mdc`](security-details.mdc)
 - Тип `offcanvas` — боковая панель через `openOffcanvasSidebar`, не отдельный маршрут
 
@@ -30,7 +31,7 @@ alwaysApply: false
 - Ядро CMS: [`0007_populate_core_menu.py`](../../core/api/src/core/cms/adp/migrations/0007_populate_core_menu.py)
 - Каждый пункт меню ссылается на **`routeName`** из `routes.js` модуля
 - Подпись в UI — из `meta.titleKey` маршрута (`resolveMenuItemTitle`); в миграции имя на русском остаётся запасным вариантом в БД
-- Иконки — имена Lucide (PascalCase); на клиенте резолвер — `@/config/icons-mapping.js`
+- Иконки — имена Lucide (PascalCase); рендер — `LucideIcon`, preload — `@/config/icons-mapping.js` ([`icons.mdc`](icons.mdc))
 - После правок в админке — событие `menu-updated` или перезагрузка страницы
 - Навигация из меню — `safeNavigateByName` / `routeName`, не хардкод path с pk
 - После добавления миграции меню — `ergoms migrate-all`
@@ -51,7 +52,7 @@ router.push(`/users/${user.id}`)
 
 1. **Миграция / restore**: upsert каталога по `catalog_key`; layout-таблицы не wipe’атся
 2. **Материализация**: `layout_service.materialize_all_layouts` / helper при create — order/parent/`before_catalog_key` на каталог
-3. **API**: `UserMenuView` — фильтр по правам (`user_menu_builder`); админ CRUD пишет и каталог, и layout
+3. **API**: `UserMenuView` — фильтр пунктов и разделителей по правам (`user_menu_builder` / `MenuAccessChecker`); админ CRUD пишет и каталог, и layout
 4. **Клиент**: `getUserMenu()` → `transformMenuData()` / `transformSeparators` (якорь `before_catalog_key`) → `MenuList`
 5. In-memory кеш прогревается в `main.js`; `peekCachedMenu()` — отрисовка без мигания
 
@@ -99,7 +100,7 @@ class Migration(migrations.Migration):
 
 ## Меню приложений (AppsMenu)
 
-Не путать с боковым меню. Сетка приложений в toolbar — ModuleBridge-группа `apps.menu.items` ([`appsMenu.js`](../../core/client/src/integrations/appsMenu.js)). Плавающие виджеты (мини-чат) — отдельно: `shell.floating_widgets` + [`FloatingWidgetsHost`](../../core/client/src/components/FloatingWidgetsHost.vue), не через LayoutPlugin/offcanvas. В toolbar всегда рядом: AppsMenu и уведомления.
+Не путать с боковым меню. Сетка приложений в toolbar — ModuleBridge-группа `apps.menu.items` ([`appsMenu.js`](../../core/client/src/integrations/appsMenu.js)). Кнопка скрыта, пока пунктов нет; повторная загрузка remote (502) не отменяется — кнопка появится, когда пункты зарегистрируются. Пункты не прячутся по праву модуля и без `isVisible`: иначе при выключенном в ADP модуле панель пустеет у всех, включая администратора. Доступ по-прежнему проверяет сервер при открытии. Плавающие виджеты (мини-чат) — отдельно: `shell.floating_widgets` + [`FloatingWidgetsHost`](../../core/client/src/components/FloatingWidgetsHost.vue), не через LayoutPlugin/offcanvas.
 
 ## Админка меню
 
@@ -110,6 +111,7 @@ class Migration(migrations.Migration):
 
 | Тема | Файл |
 |------|------|
+| Иконки Lucide | [`icons.mdc`](icons.mdc) |
 | Структура модуля, routes.js | [`modules.mdc`](modules.mdc) |
 | Миграции Django | [`database.mdc`](database.mdc) |
 | Права на маршруты (UX) | [`permission_rules.mdc`](permission_rules.mdc) |

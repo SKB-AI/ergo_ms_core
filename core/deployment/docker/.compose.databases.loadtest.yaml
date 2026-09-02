@@ -1,0 +1,18 @@
+databases:
+  default:
+    engine: postgresql
+    name: ergo_ms_loadtest
+    user: postgres
+    password: admin
+    host: postgres-loadtest
+    port: 5432
+  redis:
+    engine: redis
+    host: redis
+    port: 6379
+    user: ergo_80c11520
+    password: 96c53af68942b66f6a6b9377c51c0bbd583d80221be8ee871a4ecbe51bc74d03
+    db_channel: 0
+    db_cache: 1
+    db_celery_broker: 2
+    db_celery_result: 3

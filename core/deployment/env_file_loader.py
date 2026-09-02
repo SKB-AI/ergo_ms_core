@@ -22,6 +22,7 @@ _FRAGMENT_PRIORITY = (
     'cache.env',
     'celery.env',
     'postgres.env',
+    'search.env',
 )
 
 

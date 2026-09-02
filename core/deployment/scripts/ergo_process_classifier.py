@@ -90,6 +90,57 @@ def _is_celery_cmdline(text: str) -> bool:
     return 'python' in first or first.endswith('python') or first.endswith('python.exe')
 
 
+def _known_module_names(project_root: Path) -> frozenset[str]:
+    from lifecycle.modules.catalog import ModuleCatalog  # noqa: WPS433
+
+    catalog = ModuleCatalog.from_env(project_root)
+    return frozenset(catalog.list_module_names(include_disabled=True))
+
+
+def _worker_module_name(cmdline: list[str], project_root: Path) -> str:
+    """Имя модуля у worker: --module= или --hostname=worker@<name>."""
+    name = _flag_value(cmdline, '--module')
+    if name:
+        return name
+    hostname = _flag_value(cmdline, '--hostname')
+    prefix = 'worker@'
+    if not hostname.startswith(prefix):
+        return ''
+    token = hostname[len(prefix):].strip()
+    if token and token in _known_module_names(project_root):
+        return token
+    return ''
+
+
+def _beat_module_name(cmdline: list[str]) -> str:
+    """Имя модуля у Beat: --module= или файл celerybeat-schedule-<name>."""
+    name = _flag_value(cmdline, '--module')
+    if name:
+        return name
+    marker = 'celerybeat-schedule-'
+    for part in cmdline:
+        text = str(part).replace('\\', '/')
+        index = text.rfind(marker)
+        if index < 0:
+            continue
+        suffix = text[index + len(marker):].strip()
+        suffix = suffix.split('/')[-1].strip()
+        if suffix:
+            return suffix
+    return ''
+
+
+def _flag_value(cmdline: list[str], flag: str) -> str:
+    prefix = f'{flag}='
+    for index, part in enumerate(cmdline):
+        text = str(part)
+        if text.startswith(prefix):
+            return text.split('=', 1)[1].strip()
+        if text == flag and index + 1 < len(cmdline):
+            return str(cmdline[index + 1]).strip()
+    return ''
+
+
 def _candidate_process_names(project_root: Path) -> frozenset[str]:
     return _CORE_CANDIDATE_PROCESS_NAMES | collect_module_process_names(project_root)
 
@@ -132,21 +183,27 @@ def _classify_by_cmdline(
     project_bound = (
         _in_project(text, root_text)
         or 'virtual_env/packages/redis' in text
+        or 'virtual_env/packages/meilisearch' in text
         or 'core/deployment/nginx' in text
     )
     if not project_bound:
         # Модульные роли могут матчить portable-пакет вне ядерных маркеров.
         return _classify_by_module_roles(cmdline, None, project_root, resolved)
 
+    if 'start_module_api.py' in text:
+        name = _flag_value(cmdline, '--module')
+        return f'module-api:{name}' if name else 'module-api'
     if 'start_media_api.py' in text or 'core/media_api' in text:
         return 'media-api'
     if 'start_api.py' in text:
         return 'api'
     if 'start_celery_beat.py' in text or (_is_celery_cmdline(text) and ' beat' in f' {text.lower()}'):
-        return 'celery-beat'
+        name = _beat_module_name(cmdline)
+        return f'module-beat:{name}' if name else 'celery-beat'
     if 'start_celery_worker.py' in text or (_is_celery_cmdline(text) and ' worker' in f' {text.lower()}'):
-        return 'celery-worker'
-    if 'start_jupyter.py' in text:
+        name = _worker_module_name(cmdline, project_root)
+        return f'module-worker:{name}' if name else 'celery-worker'
+    if 'start_jupyter.py' in text or 'start_jupyter_if_enabled.py' in text:
         return 'jupyter'
     if 'vite' in text and ('core/client' in text or _in_project(text, root_text)):
         return 'client'
@@ -160,6 +217,10 @@ def _classify_by_cmdline(
         return 'postgres'
     if 'nginx' in text and 'core/deployment/nginx' in text:
         return 'nginx'
+    if 'meilisearch' in text and (
+        'virtual_env/packages/meilisearch' in text or _in_project(text, root_text)
+    ):
+        return 'meilisearch'
     if ('runserver' in text or 'daphne' in text) and 'core/api' in text:
         return 'api'
 

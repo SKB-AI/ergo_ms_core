@@ -22,6 +22,8 @@ source "$LIB_DIR/cli.sh"
 source "$LIB_DIR/nginx.sh"
 # shellcheck source=../../linux/lib/redis.sh
 source "$LIB_DIR/redis.sh"
+# shellcheck source=../../linux/lib/meilisearch.sh
+source "$LIB_DIR/meilisearch.sh"
 # shellcheck source=../../linux/lib/postgres.sh
 source "$LIB_DIR/postgres.sh"
 # shellcheck source=../../linux/lib/tls.sh
@@ -43,13 +45,17 @@ _invoke_infra_backend() {
     echo "[ERROR] Backend не найден: $backend" >&2
     exit 1
   fi
+  local deployment_dir="$root/core/deployment"
   local py
   if py="$(lifecycle_python_exe "$root")"; then
-    "$py" "$backend" "$operation" --root "$root"
+    PYTHONPATH="$deployment_dir${PYTHONPATH:+:$PYTHONPATH}" \
+      "$py" "$backend" "$operation" --root "$root"
   elif command -v python3.12 >/dev/null 2>&1; then
-    python3.12 "$backend" "$operation" --root "$root"
+    PYTHONPATH="$deployment_dir${PYTHONPATH:+:$PYTHONPATH}" \
+      python3.12 "$backend" "$operation" --root "$root"
   else
-    python3 "$backend" "$operation" --root "$root"
+    PYTHONPATH="$deployment_dir${PYTHONPATH:+:$PYTHONPATH}" \
+      python3 "$backend" "$operation" --root "$root"
   fi
 }
 
@@ -188,6 +194,7 @@ case "$category" in
           postgres_install "$root" "$port" "false"
         fi
         ;;
+      install-service) postgres_install_service "$root" ;;
       uninstall) postgres_uninstall "$root" "$purge" ;;
       start) postgres_start "$root" ;;
       stop) postgres_stop "$root" ;;
@@ -195,6 +202,31 @@ case "$category" in
       status) postgres_status "$root" ;;
       test) postgres_test "$root" ;;
       *) echo "[ERROR] Неизвестная операция postgres: $operation" >&2; exit 1 ;;
+    esac
+    ;;
+  meilisearch)
+    purge=false
+    for arg in "$@"; do
+      case "$arg" in
+        --purge) purge=true ;;
+      esac
+    done
+    case "$operation" in
+      install) meilisearch_install "$root" "false" ;;
+      install-service)
+        if _meilisearch_is_installed "$root"; then
+          meilisearch_install_service "$root"
+        else
+          meilisearch_install "$root" "true"
+        fi
+        ;;
+      uninstall) meilisearch_uninstall "$root" "$purge" ;;
+      start) meilisearch_start "$root" ;;
+      stop) meilisearch_stop "$root" ;;
+      restart) meilisearch_restart "$root" ;;
+      status) _invoke_infra_backend meilisearch status ;;
+      test) _invoke_infra_backend meilisearch test ;;
+      *) echo "[ERROR] Неизвестная операция meilisearch: $operation" >&2; exit 1 ;;
     esac
     ;;
   tls)

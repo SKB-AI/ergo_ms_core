@@ -60,7 +60,7 @@ py -3.12 core\deployment\lifecycle\runner.py --list
 | Группа | Что покрывает | Примеры ergoms |
 |--------|---------------|----------------|
 | Установка и deploy | venv, зависимости, миграции, сборка | `setup`, `install-deps`, `deploy-all`, `build-all` |
-| Службы ОС | install/uninstall/start/stop/status через NSSM или systemd; модульные службы — из `host_lifecycle.yaml` | `install-services`, `uninstall-services`, `start`, `stop`, `status` |
+| Службы ОС | install/uninstall/start/stop/status через NSSM или systemd; модульные службы — из `host_lifecycle.yaml`; portable Postgres — при `ERGO_DB=portable_postgres` | `install-services`, `uninstall-services`, `start`, `stop`, `status` |
 | Инфраструктура (`infra`) | portable nginx, Redis, TLS (Linux) — обратный прокси, кэш/брокер, сертификаты | `install-nginx`, `start-redis`, `install-tls` |
 | Docker Compose | up/down/build/migrate в контейнерах | `docker-init`, `docker-up`, `docker-migrate` |
 | Разработка (foreground) | процессы в терминале | `dev`, `start-client`, `start-worker`, `warmup-caches-if-needed` |

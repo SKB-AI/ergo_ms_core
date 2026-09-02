@@ -82,13 +82,13 @@ invoke_lifecycle_runner() {
 
   local py
   if py="$(lifecycle_python_exe "$root")"; then
-    "$py" "$runner" "$recipe" "$@"
+    "$py" "$runner" "$recipe" --project-root "$root" "$@"
   elif command -v python3.12 >/dev/null 2>&1; then
-    python3.12 "$runner" "$recipe" "$@"
+    python3.12 "$runner" "$recipe" --project-root "$root" "$@"
   elif command -v python3 >/dev/null 2>&1; then
-    python3 "$runner" "$recipe" "$@"
+    python3 "$runner" "$recipe" --project-root "$root" "$@"
   else
-    python "$runner" "$recipe" "$@"
+    python "$runner" "$recipe" --project-root "$root" "$@"
   fi
 }
 

@@ -1,13 +1,28 @@
 import { readdir as readdirAsync, mkdir, rm, readFile, copyFile } from 'fs/promises';
 import { join, dirname } from 'path';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const osAbstraction = require('./os-abstraction.cjs');
 
 const DEP0169_FLAG = '--disable-warning=DEP0169';
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+export function resolveProjectPython(root = repoRoot) {
+  const candidates = process.platform === 'win32'
+    ? [
+        join(root, 'virtual_env', 'python', 'Scripts', 'python.exe'),
+        join(root, 'virtual_env', 'packages', 'python', 'python.exe'),
+      ]
+    : [
+        join(root, 'virtual_env', 'python', 'bin', 'python'),
+        join(root, 'virtual_env', 'packages', 'python', 'python'),
+      ];
+  return candidates.find((p) => existsSync(p)) || '';
+}
 
 export function buildCodeCliEnv(baseEnv = process.env) {
   const nodeOptions = [baseEnv.NODE_OPTIONS, DEP0169_FLAG].filter(Boolean).join(' ').trim();
@@ -54,10 +69,28 @@ export async function extractVsix(vsixPath, extractDir) {
       await rm(zipPath, { force: true }).catch(() => {});
     }
   } else {
-    execSync(`unzip -o -q "${vsixPath}" -d "${extractDir}"`, { stdio: 'pipe' });
+    extractVsixUnix(vsixPath, extractDir);
   }
 
   return join(extractDir, 'extension');
+}
+
+function extractVsixUnix(vsixPath, extractDir) {
+  const pythonExe = resolveProjectPython();
+  if (pythonExe) {
+    execFileSync(pythonExe, ['-m', 'zipfile', '-e', vsixPath, extractDir], {
+      stdio: 'pipe',
+    });
+    return;
+  }
+  try {
+    execFileSync('unzip', ['-o', '-q', vsixPath, '-d', extractDir], { stdio: 'pipe' });
+  } catch (error) {
+    const detail = error && error.message ? error.message : String(error);
+    throw new Error(
+      `Не удалось распаковать VSIX без portable Python и без unzip: ${detail}`,
+    );
+  }
 }
 
 function basenameWithoutExt(filePath) {

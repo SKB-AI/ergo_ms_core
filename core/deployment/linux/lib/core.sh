@@ -19,12 +19,38 @@ source "$SCRIPT_DIR_CORE/console_tags.sh"
 source "$SCRIPT_DIR_CORE/nginx_env.sh"
 # shellcheck source=redis_env.sh
 source "$SCRIPT_DIR_CORE/redis_env.sh"
+# shellcheck source=search_env.sh
+source "$SCRIPT_DIR_CORE/search_env.sh"
 # shellcheck source=portable_env.sh
 source "$SCRIPT_DIR_CORE/portable_env.sh"
 
 # Константы (базовые службы без воркеров)
-BASE_SERVICES="ergo_ms_api_dev ergo_ms_client_dev ergo_ms_celery_beat"
 CLI_NAME="ergoms"
+
+ergo_service_prefix() {
+  local root="${1:-}"
+  if [[ -n "${ERGO_SERVICE_PREFIX:-}" ]]; then
+    printf '%s' "$ERGO_SERVICE_PREFIX"
+    return 0
+  fi
+  if [[ -n "$root" ]]; then
+    local from_env
+    from_env="$(_ergo_env_value "$root" 'ERGO_SERVICE_PREFIX' 2>/dev/null || true)"
+    if [[ -n "${from_env:-}" ]]; then
+      printf '%s' "$from_env"
+      return 0
+    fi
+  fi
+  printf '%s' 'ergo_ms'
+}
+
+ergo_service_name() {
+  local role="$1"
+  local root="${2:-}"
+  printf '%s_%s' "$(ergo_service_prefix "$root")" "$role"
+}
+
+BASE_SERVICES="$(ergo_service_name api_dev) $(ergo_service_name client_dev) $(ergo_service_name celery_beat)"
 
 # Глобальная переменная для кэширования списка служб
 CACHED_UNITS_LIST=""
@@ -36,6 +62,26 @@ require_root_or_sudo() {
       exit 1
     fi
   fi
+}
+
+# portable-пакеты в virtual_env принадлежат владельцу корня, не root.
+restore_project_ownership() {
+  local root="$1"
+  local path="$2"
+  [[ -e "$path" ]] || return 0
+  local owner group
+  owner="$(stat -c '%U' "$root" 2>/dev/null || true)"
+  group="$(stat -c '%G' "$root" 2>/dev/null || true)"
+  [[ -n "$owner" && "$owner" != "root" ]] || return 0
+  if [[ "$(id -u)" -eq 0 ]]; then
+    chown -R "$owner:$group" "$path"
+    return 0
+  fi
+  local current
+  current="$(stat -c '%U' "$path" 2>/dev/null || true)"
+  [[ "$current" == "$owner" ]] && return 0
+  command -v sudo >/dev/null 2>&1 || return 1
+  sudo chown -R "$owner:$group" "$path"
 }
 
 write_ergoms_message() {
@@ -86,14 +132,32 @@ write_ergoms_text() {
 }
 
 detect_project_root() {
+  if [[ -n "${ERGOMS_PROJECT_ROOT:-}" && -d "${ERGOMS_PROJECT_ROOT}/core/deployment" ]]; then
+    if command -v readlink >/dev/null 2>&1; then
+      readlink -f "$ERGOMS_PROJECT_ROOT"
+    else
+      (cd "$ERGOMS_PROJECT_ROOT" && pwd)
+    fi
+    return 0
+  fi
+  # Службы systemd передают корень через EnvironmentFile
+  if [[ -n "${ERGO_ROOT:-}" && -d "${ERGO_ROOT}/modules" && -d "${ERGO_ROOT}/core/deployment" ]]; then
+    if command -v readlink >/dev/null 2>&1; then
+      readlink -f "$ERGO_ROOT"
+    else
+      (cd "$ERGO_ROOT" && pwd)
+    fi
+    return 0
+  fi
+
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  
-  # Go up two levels from lib directory
+
+  # core/deployment/linux/lib → core/deployment
   local deployment_dir
-  deployment_dir="$(cd "$script_dir/.." && pwd)"
-  
-  # Prefer git root if available
+  deployment_dir="$(cd "$script_dir/../.." && pwd)"
+
+  # Prefer git root if available (may fail as root: dubious ownership)
   if command -v git >/dev/null 2>&1; then
     if git -C "$deployment_dir" rev-parse --show-toplevel >/dev/null 2>&1; then
       git -C "$deployment_dir" rev-parse --show-toplevel
@@ -101,7 +165,7 @@ detect_project_root() {
     fi
   fi
 
-  # Fallback: assume deployment directory is inside project root
+  # Fallback: …/core/deployment → корень проекта (на два уровня вверх)
   echo "$(cd "$deployment_dir/../.." && pwd)"
 }
 
@@ -199,23 +263,70 @@ list_module_host_stop_commands() {
   "$py" "$script" --root "$project_root" --stop-commands 2>/dev/null || true
 }
 
+# Строки «cmd<TAB>unit1 unit2» — для stop: не дублировать stop_command, если unit уже неактивен.
+list_module_host_stop_pairs() {
+  local project_root="${1:-}"
+  local py script
+  [[ -n "$project_root" ]] || return 0
+  py="$project_root/virtual_env/python/bin/python"
+  script="$project_root/core/deployment/scripts/host_lifecycle_loader.py"
+  [[ -x "$py" && -f "$script" ]] || return 0
+  "$py" "$script" --root "$project_root" --stop-commands-paired 2>/dev/null || true
+}
+
+host_profile_script() {
+  echo "${1:-}/core/deployment/lifecycle/host_profile.py"
+}
+
+host_profile_python() {
+  echo "${1:-}/virtual_env/python/bin/python"
+}
+
+host_profile_wants() {
+  local project_root="${1:-}"
+  local service_id="${2:-}"
+  local py script
+  py="$(host_profile_python "$project_root")"
+  script="$(host_profile_script "$project_root")"
+  [[ -x "$py" && -f "$script" ]] || return 0
+  "$py" "$script" --root "$project_root" --wants "$service_id" >/dev/null 2>&1
+}
+
+host_profile_core_units() {
+  local project_root="${1:-}"
+  local py script
+  py="$(host_profile_python "$project_root")"
+  script="$(host_profile_script "$project_root")"
+  [[ -x "$py" && -f "$script" ]] || return 0
+  "$py" "$script" --root "$project_root" --core-units 2>/dev/null || true
+}
+
 # Генерация списка служб на основе конфигурации воркеров
 generate_units_list() {
   local project_root="${1:-}"
-  local units="ergo_ms_api_dev.service ergo_ms_media_api.service ergo_ms_celery_beat.service"
-  local postgres_svc='ergo_ms_postgres'
+  local units=""
+  local postgres_svc
   local from_env
   local unit
   local module_unit
+  local core_unit
+  postgres_svc="$(ergo_service_name postgres "$project_root")"
+
+  while IFS= read -r core_unit; do
+    [[ -z "$core_unit" ]] && continue
+    units="$units ${core_unit}.service"
+  done < <(host_profile_core_units "$project_root")
 
   if is_nginx_enabled "$project_root"; then
-    units="$units ergo_ms_nginx.service"
-  else
-    units="ergo_ms_api_dev.service ergo_ms_client_dev.service ergo_ms_media_api.service ergo_ms_celery_beat.service"
+    units="$units $(ergo_service_name nginx "$project_root").service"
   fi
 
   if is_redis_enabled "$project_root"; then
-    units="ergo_ms_redis.service $units"
+    units="$(ergo_service_name redis "$project_root").service $units"
+  fi
+
+  if is_search_enabled "$project_root"; then
+    units="$(ergo_service_name meilisearch "$project_root").service $units"
   fi
 
   if _postgres_portable_enabled "$project_root"; then
@@ -224,17 +335,19 @@ generate_units_list() {
     units="${postgres_svc}.service $units"
   fi
   
-  local workers
-  workers="$(get_celery_workers "$project_root")"
-  
-  if [[ -n "$workers" ]]; then
-    # Добавляем службы для каждого воркера из конфига
-    for worker in $workers; do
-      units="$units ergo_ms_celery_worker_${worker}.service"
-    done
-  else
-    # Если конфиг не найден, используем один общий воркер
-    units="$units ergo_ms_celery_worker.service"
+  if host_profile_wants "$project_root" yaml_workers; then
+    local workers
+    local worker_base
+    workers="$(get_celery_workers "$project_root")"
+    worker_base="$(ergo_service_name celery_worker "$project_root")"
+
+    if [[ -n "$workers" ]]; then
+      for worker in $workers; do
+        units="$units ${worker_base}_${worker}.service"
+      done
+    else
+      units="$units ${worker_base}.service"
+    fi
   fi
 
   while IFS= read -r module_unit; do
@@ -255,18 +368,25 @@ generate_units_list() {
 get_worker_service_names() {
   local project_root="${1:-}"
   local services=""
-  
+
+  if ! host_profile_wants "$project_root" yaml_workers; then
+    echo ""
+    return 0
+  fi
+
   local workers
   workers="$(get_celery_workers "$project_root")"
-  
+
+  local worker_base
+  worker_base="$(ergo_service_name celery_worker "$project_root")"
   if [[ -n "$workers" ]]; then
     for worker in $workers; do
-      services="$services ergo_ms_celery_worker_${worker}"
+      services="$services ${worker_base}_${worker}"
     done
   else
-    services="ergo_ms_celery_worker"
+    services="$worker_base"
   fi
-  
+
   echo "$services"
 }
 
@@ -309,7 +429,10 @@ daemon_reload() {
   fi
 }
 
+export -f ergo_service_prefix
+export -f ergo_service_name
 export -f require_root_or_sudo
+export -f restore_project_ownership
 export -f write_ergoms_message
 export -f write_ergoms_text
 export -f detect_project_root
@@ -317,6 +440,9 @@ export -f parse_workers_from_yaml
 export -f get_celery_workers
 export -f list_module_host_units
 export -f list_module_host_stop_commands
+export -f list_module_host_stop_pairs
+export -f host_profile_wants
+export -f host_profile_core_units
 export -f generate_units_list
 export -f get_worker_service_names
 export -f units_list

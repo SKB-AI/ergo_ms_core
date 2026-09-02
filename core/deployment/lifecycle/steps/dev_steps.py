@@ -47,17 +47,23 @@ class DevForegroundStep(DeploymentStep):
         return ctx.runtime == 'host'
 
     def run(self, ctx: DeploymentContext) -> StepResult:
-        scripts = _DEV_SCRIPTS.get(self._recipe_key, [])
+        scripts = list(_DEV_SCRIPTS.get(self._recipe_key, []))
         if not scripts:
             return StepResult(exit_code=1, message=t('unknown_dev_recipe', name=self._recipe_key))
+        if self._recipe_key == 'dev-api' and os.environ.get('ERGO_WARMUP_DONE', '').strip().lower() in (
+            '1',
+            'true',
+            'yes',
+        ):
+            scripts = [rel for rel in scripts if not rel.endswith('warmup_caches_if_needed.py')]
         # Wall-clock до warmup/скрипта — итог включает всю цепочку рецепта.
         if self._recipe_key == 'dev-api':
             os.environ.setdefault(_API_START_WALL_ENV, str(time.time()))
         elif self._recipe_key == 'dev-media':
             os.environ.setdefault(_MEDIA_START_WALL_ENV, str(time.time()))
         script_args: list[str] = []
-        if self._recipe_key == 'sync-logs-services':
-            # ergoms sync-logs-services --json logs-all → runner parse_known_args
+        if self._recipe_key in ('sync-logs-services', 'dev-beat'):
+            # start-beat --module=<name> и sync-logs-services --json → runner parse_known_args
             script_args = [str(a) for a in (ctx.options.get('compose_extra_args') or [])]
         code = 0
         for rel in scripts:
@@ -75,15 +81,25 @@ class DevWorkerStep(DeploymentStep):
         return 'dev_worker'
 
     def run(self, ctx: DeploymentContext) -> StepResult:
-        worker = ctx.option_str('worker', 'all')
+        extra = [str(a) for a in (ctx.options.get('compose_extra_args') or [])]
         script = 'core/api/scripts/start_celery_worker.py'
         py = host_ops.pick_python_for_ctx(ctx)
         script_path = ctx.project_root / script
         import subprocess
 
         cmd = [*py, str(script_path)]
-        if worker:
+        extra_has_module = any(a == '--module' or a.startswith('--module=') for a in extra)
+        extra_has_worker = any(a == '--worker' or a.startswith('--worker=') for a in extra)
+        worker = ctx.option_str('worker', '')
+        if extra_has_module:
+            pass
+        elif extra_has_worker:
+            pass
+        elif worker:
             cmd.extend(['--worker', worker])
+        else:
+            cmd.extend(['--worker', 'all'])
+        cmd.extend(extra)
         code = subprocess.call(
             cmd,
             cwd=str(ctx.project_root),

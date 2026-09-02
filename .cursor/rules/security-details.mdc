@@ -18,7 +18,7 @@ alwaysApply: false
 | Файлы и media_api | [`media_api.mdc`](media_api.mdc) |
 | Проверки прав в модулях | [`modules.mdc`](modules.mdc) → `adp.permission_check` |
 | Глобальный админ | [`global-admin.mdc`](global-admin.mdc) |
-| Swagger и queryset | [`api_code.mdc`](api_code.mdc) → `SwaggerSafeMixin` |
+| Swagger и queryset | [`api_code.mdc`](api_code.mdc) → `BaseModelViewSet` |
 | Аудит | [`audit.mdc`](audit.mdc) |
 
 ---
@@ -47,18 +47,43 @@ alwaysApply: false
 
 **Запрещено:**
 
-- `AllowAny` / отключение `permission_classes` без явной бизнес-причины (публичная тема, healthcheck)
+- `AllowAny` / отключение `permission_classes` / `BaseAPIViewPublicMixin` без явной бизнес-причины и без строки в [`core_anonymous_allowlist.yaml`](../../core/deployment/security/core_anonymous_allowlist.yaml)
 - Возвращать чужие данные без фильтра по `request.user` / scope / правам
 - Пропускать проверку прав «временно» или «только для админов в dev»
 - Доверять `scope_id`, `user_id`, ролям из тела запроса без верификации на сервере
 - Обходить `PermissionService` / `bridge.call('adp.permission_check', ...)` локальными обходными проверками в модулях
+- Считать ACL «скрытия» эндпоинтов (`ApiAccessPolicyMiddleware`) заменой `permission_classes` — политика режет уже вошедших, анонима решает DRF
 
 **Правильно:**
 
-- По умолчанию `IsAuthenticated`; админ — `IsGlobalAdmin` или `PermissionService`
-- ViewSet с данными пользователя — `SwaggerSafeMixin` + фильтр в `get_queryset` ([`api_code.mdc`](api_code.mdc))
+- По умолчанию токен: `BaseAPIView` / `BaseModelViewSet` / `DEFAULT_PERMISSION_CLASSES` = `IsAuthenticated`. Админ — `IsGlobalAdmin` или `PermissionService`
+- Публичный эндпоинт ядра (login, health, reset) — только `BaseAPIViewPublicMixin` + запись в allowlist
+- ViewSet с данными пользователя — `BaseModelViewSet` + фильтр в `get_queryset` / `owner_field` ([`api_code.mdc`](api_code.mdc))
 - Модульные права — `permissions.py` модуля + проверка через bridge / `PermissionService.check_module_permission`
-- `get_queryset`: при `swagger_fake_view` или неаутентифицированном user — `.none()`, не полный queryset
+- `get_queryset`: `super()` / `restrict_queryset` — пустая выборка для Swagger и гостей; дальше фильтр по владельцу/scope, не полный queryset
+
+```python
+# BAD — публичный доступ «потому что так было у BaseAPIView»
+class NewReportView(BaseAPIView):
+    pass  # теперь требует JWT; не ставь AllowAny молча
+
+# BAD — AllowAny без миксина и без allowlist
+class NewReportView(APIView):
+    permission_classes = [AllowAny]
+
+# GOOD — обычный эндпоинт (токен по умолчанию)
+class NewReportView(BaseAPIView):
+    pass
+
+# GOOD — явный публичный доступ (login / health) + строка в allowlist
+class UserAuthorizationView(BaseAPIViewPublicMixin):
+    ...
+
+# GOOD — CRUD: JWT, public_id, пустой qs для гостей/Swagger
+class ItemViewSet(BaseModelViewSet):
+    queryset = Item.objects.all()
+    owner_field = 'owner'
+```
 
 ```python
 # ❌ BAD — доверие client-side id

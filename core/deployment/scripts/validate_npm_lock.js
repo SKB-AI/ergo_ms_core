@@ -106,14 +106,27 @@ function findForbiddenErgoMsPackages(lockContent) {
   return [...found].sort()
 }
 
-function findModuleWorkspacePaths(lockContent) {
+function findModuleWorkspacePaths(lockData) {
   const found = new Set()
-  const pattern = /"[^"]*modules\/[^"]+"/g
-  let match = pattern.exec(lockContent)
-  while (match) {
-    found.add(match[0].slice(1, -1))
-    match = pattern.exec(lockContent)
+
+  function visit(value) {
+    if (typeof value === 'string') {
+      if (/(^|[\\/])modules[\\/]/.test(value)) {
+        found.add(value)
+      }
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+      return
+    }
+    if (value && typeof value === 'object') {
+      Object.keys(value).forEach(visit)
+      Object.values(value).forEach(visit)
+    }
   }
+
+  visit(lockData)
   return [...found].sort()
 }
 
@@ -143,7 +156,7 @@ function main() {
     errors.push(`в lock workspaces содержат модули: ${leakedWorkspaces.join(', ')}`)
   }
 
-  const modulePaths = findModuleWorkspacePaths(lockContent)
+  const modulePaths = findModuleWorkspacePaths(lockData)
   if (modulePaths.length > 0) {
     errors.push(`найдены пути модулей в lock: ${modulePaths.join(', ')}`)
   }

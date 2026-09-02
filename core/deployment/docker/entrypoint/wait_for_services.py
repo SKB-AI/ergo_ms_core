@@ -2,7 +2,7 @@
 Ожидание postgres и redis перед стартом сервиса в Docker.
 
 Переменные: ERGO_DOCKER_DB_HOST, ERGO_DOCKER_DB_PORT, REDIS_HOST, REDIS_PORT,
-DOCKER_DATABASE, DOCKER_ENABLED.
+DOCKER_DATABASE, DOCKER_ENABLED, ERGO_DOCKER_SKIP_INFRA_WAIT.
 """
 
 from __future__ import annotations
@@ -58,13 +58,19 @@ def wait_tcp(host: str, port: int, timeout: float, label: str) -> bool:
 def main() -> int:
     if not _truthy('DOCKER_ENABLED'):
         return 0
+    # compose run --no-deps (python-install) не поднимает postgres/redis.
+    if _truthy('ERGO_DOCKER_SKIP_INFRA_WAIT'):
+        return 0
 
     timeout = float(_env('ERGO_DOCKER_WAIT_TIMEOUT', '120'))
 
-    redis_host = _env('REDIS_HOST', 'redis')
-    redis_port = int(_env('REDIS_PORT', '6379') or '6379')
-    if not wait_tcp(redis_host, redis_port, timeout, 'Redis'):
-        return 1
+    broker = _env('ERGO_BROKER', 'redis').lower()
+    redis_on = _truthy('REDIS_ENABLED', default=(broker != 'local'))
+    if redis_on:
+        redis_host = _env('REDIS_HOST', 'redis')
+        redis_port = int(_env('REDIS_PORT', '6379') or '6379')
+        if not wait_tcp(redis_host, redis_port, timeout, 'Redis'):
+            return 1
 
     db_mode = _env('DOCKER_DATABASE', 'container').lower()
     if db_mode == 'container' and _truthy('DOCKER_PROFILE_POSTGRES', default=True):

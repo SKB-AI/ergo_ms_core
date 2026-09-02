@@ -1,6 +1,7 @@
 # ERGO MS — dev-override (Vite, bind-mount исходников)
 services:
   api:
+    # Публичный API на хост. /internal/bridge закрыт nginx deny и проверкой адреса.
     ports:
       - "${API_PORT:-8000}:${API_PORT:-8000}"
 
@@ -12,6 +13,8 @@ services:
     build:
       context: ../../..
       dockerfile: core/deployment/docker/Dockerfile.client
+      args:
+        NODE_BASE: ${DOCKER_NODE_BASE:-node:20-bookworm-slim}
     env_file:
       - .compose.env
     environment:

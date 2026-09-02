@@ -43,6 +43,8 @@ if 'virtual_env/packages/mydaemon' in text or 'mydaemon' in text:
 module: <имя_модуля>
 roles:
   - id: <роль_в_таблице>          # строка в resource-usage
+    reserve_host_budget: true      # RSS роли вычитается из бюджета Celery
+    reserve_vram_mb: 4096          # запас VRAM, если процесс жив (подстройте под свои веса)
     process_names:                 # доп. кандидаты (нижний регистр при загрузке)
       - mydaemon
       - mydaemon.exe
@@ -61,6 +63,8 @@ roles:
 | Поле | Смысл |
 |------|--------|
 | `id` | роль в выводе `resource-usage` |
+| `reserve_host_budget` | если `true` и процесс жив — его RSS в резерве RAM Celery |
+| `reserve_vram_mb` | если процесс жив — из свободной VRAM вычитается `max(факт nvidia-smi, это значение)` |
 | `process_names` | имена процессов в кандидатах |
 | `when[].cmdline_contains_any` | хотя бы одна подстрока в нормализованном cmdline |
 | `when[].cwd_contains_any` | хотя бы одна подстрока в cwd |
@@ -76,6 +80,8 @@ roles:
 module: <name>
 roles:
   - id: mydaemon
+    reserve_host_budget: true
+    reserve_vram_mb: 0
     process_names:
       - mydaemon
       - mydaemon.exe
@@ -96,7 +102,7 @@ roles:
 | Структура модулей | [`modules.mdc`](modules.mdc) |
 | Hook discovery в ядре | [`struct.mdc`](struct.mdc) |
 | Тот же класс discovery (MCP) | [`mcp.mdc`](mcp.mdc) |
-| Ollama | [`modules/ollama_framework/.cursor/rules/ollama-framework.mdc`](../../modules/ollama_framework/.cursor/rules/ollama-framework.mdc) |
+| Доменные роли модуля | `modules/<name>/.cursor/rules/` (правила модуля) |
 | Host lifecycle (stop/install в тестах) | [`host-lifecycle.mdc`](host-lifecycle.mdc) |
 | Redis, nginx | [`deployment-infra.mdc`](deployment-infra.mdc) |
 | Изоляция ядра | [`core-module-isolation.mdc`](core-module-isolation.mdc) |

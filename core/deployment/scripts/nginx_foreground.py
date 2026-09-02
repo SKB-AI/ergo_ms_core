@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import locale
 import os
 import subprocess
 import sys
@@ -21,11 +22,43 @@ from cli_locale import t  # noqa: E402
 from console_tags import format_console  # noqa: E402
 from log_env import log_file_path, nginx_access_log_enabled  # noqa: E402
 
+_UTF8_ALIASES = frozenset({'utf-8', 'utf8', 'cp65001'})
+
 
 def _configure_stdio_utf8() -> None:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, 'reconfigure'):
             stream.reconfigure(encoding='utf-8', errors='replace')
+
+
+def _log_line_encodings() -> tuple[str, ...]:
+    """Порядок декодирования строк лога: UTF-8, затем локаль ОС (часто CP1251 на RU Windows)."""
+    ordered: list[str] = ['utf-8']
+    seen = set(_UTF8_ALIASES)
+    preferred = (locale.getpreferredencoding(False) or '').strip()
+    if preferred and preferred.lower() not in seen:
+        ordered.append(preferred)
+        seen.add(preferred.lower())
+    if os.name == 'nt':
+        for encoding in ('cp1251', 'cp1252'):
+            if encoding not in seen:
+                ordered.append(encoding)
+                seen.add(encoding)
+    return tuple(ordered)
+
+
+def decode_log_bytes(raw: bytes) -> str:
+    """Декодирует строку лога; в одном файле могут смешиваться UTF-8 и CP1251 (PostgreSQL)."""
+    if not raw:
+        return ''
+    payload = raw[:-2] if raw.endswith(b'\r\n') else raw[:-1] if raw.endswith(b'\n') else raw
+    newline = '\r\n' if raw.endswith(b'\r\n') else '\n' if raw.endswith(b'\n') else ''
+    for encoding in _log_line_encodings():
+        try:
+            return payload.decode(encoding) + newline
+        except UnicodeDecodeError:
+            continue
+    return payload.decode('utf-8', errors='replace') + newline
 
 
 def nginx_paths() -> tuple[Path, Path, Path]:
@@ -52,7 +85,8 @@ def is_nginx_running(nginx_dir: Path, exe: Path) -> bool:
                     errors='replace',
                     check=False,
                 )
-                if str(pid) in (result.stdout or ''):
+                stdout = result.stdout or ''
+                if str(pid) in stdout and 'nginx' in stdout.lower():
                     return True
             else:
                 os.kill(pid, 0)
@@ -117,6 +151,7 @@ def tail_log_files(
     wait_sec: float = 10.0,
     service: str = 'nginx',
     process_keeps_running: bool = True,
+    initial_lines: int = 0,
 ) -> int:
     deadline = time.monotonic() + wait_sec
     handles: dict[Path, object] = {}
@@ -126,7 +161,13 @@ def tail_log_files(
         for path in paths:
             if not path.is_file():
                 continue
-            handle = path.open('r', encoding='utf-8', errors='replace')
+            # Binary: системный PostgreSQL на RU Windows пишет CP1251, часть строк — UTF-8.
+            handle = path.open('rb')
+            if initial_lines > 0:
+                raw = handle.read()
+                chunk = raw.splitlines(keepends=True)[-initial_lines:]
+                for line in chunk:
+                    print(f'[{path.name}] {decode_log_bytes(line)}', end='')
             handle.seek(0, os.SEEK_END)
             handles[path] = handle
 
@@ -153,10 +194,10 @@ def tail_log_files(
     try:
         while True:
             for path, handle in list(handles.items()):
-                line = handle.readline()
-                while line:
-                    print(f'[{path.name}] {line}', end='')
-                    line = handle.readline()
+                raw = handle.readline()
+                while raw:
+                    print(f'[{path.name}] {decode_log_bytes(raw)}', end='')
+                    raw = handle.readline()
             time.sleep(0.3)
     except KeyboardInterrupt:
         print(format_console('info', t('log_stream_stopped')))

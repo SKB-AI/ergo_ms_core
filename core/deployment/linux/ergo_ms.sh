@@ -25,6 +25,8 @@ source "$LIB_DIR/commands.sh"
 source "$LIB_DIR/nginx.sh"
 # shellcheck source=lib/redis.sh
 source "$LIB_DIR/redis.sh"
+# shellcheck source=lib/meilisearch.sh
+source "$LIB_DIR/meilisearch.sh"
 # shellcheck source=lib/postgres.sh
 source "$LIB_DIR/postgres.sh"
 # shellcheck source=lib/tls.sh
@@ -33,6 +35,8 @@ source "$LIB_DIR/tls.sh"
 source "$LIB_DIR/lifecycle.sh"
 # shellcheck source=lib/help.sh
 source "$LIB_DIR/help.sh"
+# shellcheck source=lib/cli_log.sh
+source "$LIB_DIR/cli_log.sh"
 
 main() {
   local command=""
@@ -206,6 +210,8 @@ main() {
     else
       ERGO_ROOT="$(detect_project_root)"
     fi
+
+    attach_cli_session_log "$ERGO_ROOT" "$command"
     
     # Execute clean and update-submodules as built-in first (avoid recursion via commands.conf)
     if [[ "$is_clean_command" == true ]]; then
@@ -337,8 +343,11 @@ main() {
       [[ -n "$pg_port" ]] && extra+=(--listen-port "$pg_port")
       [[ "$pg_force" == true ]] && extra+=(--with-postgres)
       case "$command" in
-        install-postgres|install-postgres-service)
+        install-postgres)
           invoke_lifecycle_runner "$ERGO_ROOT" install-postgres "${extra[@]}"
+          ;;
+        install-postgres-service)
+          invoke_lifecycle_runner "$ERGO_ROOT" install-postgres-service "${extra[@]}"
           ;;
         *)
           invoke_lifecycle_runner "$ERGO_ROOT" "$command" "${extra[@]}"
@@ -395,6 +404,12 @@ main() {
         show_celery_beat_logs "$module_filter" "$lines"
         exit 0
       fi
+
+      if [[ "$service_name" == "setup-full" || "$service_name" == "setup" || "$service_name" == "ergoms" ]]; then
+        set_service_project_root "$ERGO_ROOT"
+        show_service_logs "$service_name" "$lines"
+        exit 0
+      fi
       
       set_service_project_root "$ERGO_ROOT"
 
@@ -416,7 +431,7 @@ main() {
       postgres_from_env="$(_ergo_env_value "$ERGO_ROOT" 'POSTGRES_SERVICE_LINUX' 2>/dev/null || true)"
       [[ -n "${postgres_from_env:-}" ]] && postgres_svc="$postgres_from_env"
       case "$service_name" in
-        ergo_ms_nginx|ergo_ms_nginx.service|ergo_ms_redis|ergo_ms_redis.service|ergo_ms_redis|"$postgres_svc"|"${postgres_svc}.service"|ergo_ms_postgres|ergo_ms_postgres.service)
+        ergo_ms_nginx|ergo_ms_nginx.service|ergo_ms_redis|ergo_ms_redis.service|ergo_ms_redis|ergo_ms_meilisearch|ergo_ms_meilisearch.service|"$postgres_svc"|"${postgres_svc}.service"|ergo_ms_postgres|ergo_ms_postgres.service)
           valid=true
           ;;
       esac
@@ -433,7 +448,7 @@ main() {
 
       if [[ "$valid" == false ]]; then
         write_ergoms_message 'unknown_service' red stderr "name=$service_name"
-        write_ergoms_message available_services yellow --stderr "items=$(units_list "$ERGO_ROOT" | tr '\n' ' ') ergo_ms_nginx ergo_ms_redis $postgres_svc celery-tasks celery-beat"
+        write_ergoms_message available_services yellow --stderr "items=$(units_list "$ERGO_ROOT" | tr '\n' ' ') ergo_ms_nginx ergo_ms_redis ergo_ms_meilisearch $postgres_svc celery-tasks celery-beat setup-full ergoms"
         exit 1
       fi
 
@@ -501,6 +516,7 @@ main() {
 
   # Устанавливаем корень проекта для функций служб
   set_service_project_root "$ERGO_ROOT"
+  attach_cli_session_log "$ERGO_ROOT" "$command"
 
   # Fast-path commands that don't need install
   case "$command" in

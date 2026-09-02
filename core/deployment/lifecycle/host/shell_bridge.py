@@ -113,5 +113,7 @@ def invoke_dispatch(
     argv = ['bash', str(_LINUX_DISPATCH), category, operation, root, *extra_args]
     if ctx.option_bool('needs_sudo') and sys.platform != 'win32':
         if hasattr(os, 'geteuid') and os.geteuid() != 0:
-            argv = ['sudo', *argv]
+            from lifecycle.host.privilege import sudo_env_assignments
+
+            argv = ['sudo', *sudo_env_assignments(), *argv]
     return subprocess.call(argv, cwd=root)

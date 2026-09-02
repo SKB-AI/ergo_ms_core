@@ -13,8 +13,12 @@ services:
       - ${ERGO_PROJECT_ROOT:-../../..}/virtual_env/static_api:/usr/share/nginx/static:ro
       - ${ERGO_LOGS_BIND:-../../../logs}:/var/log/ergo:rw
     depends_on:
-      - api
-      - media-api
+      api:
+        condition: service_started
+        required: false
+      media-api:
+        condition: service_started
+        required: false
     networks:
       - ergo_net
     restart: unless-stopped

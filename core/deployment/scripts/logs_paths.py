@@ -31,12 +31,27 @@ def resolve_service_log_files(service_name: str, project_root: Path | None = Non
     base = service_name.replace('.service', '')
     logs_dir = resolve_logs_dir(project_root)
     mapping = service_log_map(project_root)
+    root = project_root or PROJECT_ROOT
 
-    if (
-        base.startswith('ergo_ms_celery_worker_')
-        or base.startswith('ergo-celery-worker-')
-    ):
+    from service_names import names_from_root
+
+    svc_names = names_from_root(root)
+    if svc_names.is_celery_worker(base) or base.startswith('ergo-celery-worker-'):
         return [logs_dir / log_basename('CELERY_WORKER', project_root)]
+
+    if base in (
+        svc_names.postgres,
+        'ergo-postgres',
+        f'{svc_names.prefix}_db',
+        f'{svc_names.prefix}_sqlite',
+        f'{svc_names.prefix}_mysql',
+        f'{svc_names.prefix}_mssql',
+    ):
+        from start_db_logs_dev import resolve_default_db_log_paths  # noqa: WPS433
+
+        paths = resolve_default_db_log_paths(root=root)
+        existing = [path for path in paths if path.is_file()]
+        return existing or (paths[:1] if paths else [logs_dir / f'{base}.log'])
 
     names = mapping.get(base)
     if names:
@@ -53,7 +68,8 @@ def service_log_files_posix(service_name: str, project_root: Path | None = None)
 
 
 def celery_tasks_module_pattern(module_name: str) -> str:
-    return f'celery.module.{module_name}'
+    """Фильтр хвоста celery_tasks.log: задачи и код модуля в процессе worker."""
+    return rf'(celery\.module\.{module_name}|modules\.{module_name})'
 
 
 def _cli_main() -> int:

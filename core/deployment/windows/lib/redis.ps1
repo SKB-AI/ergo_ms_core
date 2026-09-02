@@ -1,7 +1,12 @@
 ﻿# Redis management for Windows
 # Установка и управление portable Redis в virtual_env/packages/redis
 
-$script:RedisServiceName = 'ergo_ms_redis'
+$script:RedisServiceName = Get-ErgoServiceName -Role 'redis'
+
+function Sync-RedisServiceName {
+    param([string]$Root)
+    $script:RedisServiceName = Get-ErgoServiceName -Role 'redis' -ProjectRoot $Root
+}
 
 
 
@@ -194,6 +199,7 @@ function Install-Redis {
 
 function Install-RedisService {
     param([string]$Root)
+    Sync-RedisServiceName -Root $Root
 
     if (-not (Test-RedisInstalled -Root $Root)) {
         Write-ErgomsMessage -Key 'error_not_installed_run' -Color Red -Stderr -Param @{ name = 'Redis'; cmd = 'ergoms install-redis' }
@@ -271,12 +277,14 @@ function Stop-RedisProcess {
                 Write-ErgomsMessage -Key 'redis_arrow_shutdown' -Color Cyan
             }
             $endpoint = Get-RedisCliEndpoint -Root $Root
-            # Windows redis-cli: -c включает cluster mode, не путь к конфигу (в отличие от Linux).
-            Invoke-RedisCli -CliExe $cli -Arguments @(
-                '-h', $endpoint.Host,
-                '-p', $endpoint.Port,
-                'shutdown'
-            ) | Out-Null
+            # redis-cli -c — cluster mode, не путь к конфигу. Останавливаем по host/port.
+            $authArgs = @()
+            $requirePass = Get-RedisRequirePass -Root $Root
+            if ($requirePass) {
+                $authArgs = @('-a', $requirePass, '--no-auth-warning')
+            }
+            $cliArgs = @('-h', $endpoint.Host, '-p', $endpoint.Port) + $authArgs + @('shutdown')
+            Invoke-RedisCli -CliExe $cli -Arguments $cliArgs | Out-Null
             Start-Sleep -Seconds 1
         }
         $pidFile = Join-Path (Get-RedisDir -Root $Root) 'run\redis.pid'
@@ -321,37 +329,11 @@ function Start-RedisProcess {
         return
     }
 
-    # Уже отвечает — не перезапускаем (избегаем гонки warmup + start-redis-dev).
-    if (Test-RedisPing -Root $Root) {
-        Write-ErgomsMessage -Key 'ok_started' -Color Green -Param @{ name = 'Redis' }
-        return
-    }
-
-    if (Test-RedisProcessRunning) {
-        Stop-RedisProcess -Root $Root -Quiet
-    }
-
-    $redisDir = Get-RedisDir -Root $Root
-    $serverExe = Get-RedisServerExe -Root $Root
-
-    Write-ErgomsMessage -Key 'arrow_starting' -Color Cyan -Param @{ name = 'Redis' }
-    # MSYS2-сборка redis-windows не принимает абсолютный путь к конфигу (C:\...).
-    Start-Process -FilePath $serverExe -ArgumentList 'conf\redis.conf' -WindowStyle Hidden -WorkingDirectory $redisDir
-
-    $ready = $false
-    for ($i = 0; $i -lt 20; $i++) {
-        Start-Sleep -Milliseconds 500
-        if (Test-RedisPing -Root $Root) {
-            $ready = $true
-            break
-        }
-    }
-
-    if ($ready) {
-        Write-ErgomsMessage -Key 'ok_started' -Color Green -Param @{ name = 'Redis' }
-    }
-    else {
-        Write-ErgomsMessage -Key 'error_start_failed_check_logs' -Color Red -Stderr -Param @{ name = 'Redis'; path = (Get-RedisLogPath -Root $Root) }
+    $ok = Invoke-RedisPythonScript -Root $Root -ScriptName 'redis_dev.py' -ExtraArgs @(
+        '--root', $Root,
+        '--start'
+    )
+    if (-not $ok) {
         exit 1
     }
 }
@@ -373,6 +355,23 @@ function Restart-RedisProcess {
 
     Stop-RedisProcess -Root $Root
     Start-RedisProcess -Root $Root
+}
+
+function Get-RedisRequirePass {
+    param([string]$Root)
+    $conf = Get-RedisConfPath -Root $Root
+    if (-not (Test-Path $conf)) { return '' }
+    foreach ($line in Get-Content -LiteralPath $conf -ErrorAction SilentlyContinue) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^requirepass\s+(.+)$') {
+            $value = $Matches[1].Trim()
+            if ($value.StartsWith('"') -and $value.EndsWith('"') -and $value.Length -ge 2) {
+                return $value.Substring(1, $value.Length - 2)
+            }
+            return $value
+        }
+    }
+    return ''
 }
 
 function Test-RedisPing {
@@ -434,6 +433,7 @@ function Uninstall-Redis {
         [string]$Root,
         [switch]$PurgeData
     )
+    Sync-RedisServiceName -Root $Root
 
     Write-ErgomsMessage -Key 'heading_remove' -Color Cyan -Param @{ name = 'Redis' }
     Stop-RedisProcess -Root $Root -Quiet

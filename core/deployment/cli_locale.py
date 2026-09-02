@@ -340,11 +340,15 @@ def get_message_template(key: str, lang: str | None = None) -> str | None:
     return None
 
 
-def t(key: str, *, lang: str | None = None, **params: Any) -> str:
-    """Шаблон из locales/<lang>/cli_messages*.yaml; fallback ru; иначе сам ключ."""
-    template = get_message_template(key, lang)
+def t(message_key: str, *, lang: str | None = None, **params: Any) -> str:
+    """Шаблон из locales/<lang>/cli_messages*.yaml; fallback ru; иначе сам ключ.
+
+    Имя первого аргумента не ``key``: в шаблонах часто есть плейсхолдер ``{key}``,
+    и ``t('…', key=…)`` иначе падает с TypeError.
+    """
+    template = get_message_template(message_key, lang)
     if template is None:
-        template = key
+        template = message_key
     if params:
         try:
             return template.format(**params)

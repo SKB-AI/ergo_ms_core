@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process'
 function quoteCmdArg(arg) {
   const s = String(arg)
   // ^ — escape-символ cmd.exe; удваиваем, чтобы дочерний процесс получил один ^.
-  // Иначе epubjs@^0.3.93 после кавычек превращается в битое имя пакета.
+  // Иначе pkg@^1.2.3 после кавычек превращается в битое имя пакета.
   const withCarets = s.replace(/\^/g, '^^')
   if (!/[ \t"&<>|()]/.test(s)) {
     return withCarets

@@ -1,6 +1,6 @@
 {
   "extension.displayName": "ERGO MS User Config",
-  "extension.description": "Применяет проектные настройки и горячие клавиши из user_settings.json и user_keybindings.json",
+  "extension.description": "Применяет проектные настройки, горячие клавиши и политику встроенного браузера Cursor из user_settings.json и user_keybindings.json",
   "command.applySettings.title": "ERGO MS: Применить пользовательские настройки",
   "command.applyKeybindings.title": "ERGO MS: Применить пользовательские горячие клавиши",
   "command.applyAll.title": "ERGO MS: Применить всю пользовательскую конфигурацию",

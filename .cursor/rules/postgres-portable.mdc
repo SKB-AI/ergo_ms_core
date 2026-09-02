@@ -24,9 +24,12 @@ alwaysApply: false
 - Детект «уже есть Postgres» — **по системной службе** `postgresql*`, не по подключению из `databases.yaml`
 - Наши службы **не** считаются системными: имена из `env/postgres.env` (`POSTGRES_SERVICE_WINDOWS` / `POSTGRES_SERVICE_LINUX`, по умолчанию `ergo_ms_postgres` на Windows и Linux)
 - Нет системной службы → latest stable → initdb → БД `ergo_ms` → OS-служба на **5433** → дальше `MigrateStep`
+- Linux: перед сборкой из исходников setup сам ставит gcc/make и заголовки через apt/dnf/yum/pacman (`sudo`), как nginx. Вместе с ядром ставятся contrib-расширения, которые нужны миграциям (`pg_trgm`); если portable уже стоит без них — `ergoms install-postgres` дособирает contrib из кэша исходников, без полной пересборки. `CREATE EXTENSION pg_trgm` должен быть в схеме `core` (не `public`): Django не кладёт `public` в `search_path`, иначе `gin_trgm_ops` не виден миграциям.
+- Linux systemd: процесс **не** `root` (PostgreSQL так не стартует). Пользователь — `POSTGRES_SERVICE_USER` или владелец `packages/postgres/data`
 - Есть системная служба → `[SKIP]` portable (если не force)
 - Режим: `ERGO_DB=portable_postgres` в `.env`; force — legacy `POSTGRES_FORCE_INSTALL=true` или `ergoms setup-full --with-postgres` — portable на **5433**
 - Host/port/credentials — только `databases.yaml`; служба и нагрузка (`postgresql.conf`) — только [`env/postgres.env.example`](../../env/postgres.env.example)
+- Windows: служба идёт от `NetworkService` (postgres не стартует как LocalSystem). `icacls` выдаёт Modify на `packages/postgres`, `packages/nssm` и корневой `logs/` — SCM запускает `nssm.exe`, а `log_directory` в conf указывает в `logs/`
 - Маркер `virtual_env/packages/postgres/PORT` после install
 - Скрипты **не** пишут host/port / `POSTGRES_*` в `.env` / yaml ([`no-auto-env-write.mdc`](no-auto-env-write.mdc))
 - Установленный portable входит в `ergoms start` / `start-all-services` (`Get-ServiceNames` / `generate_units_list`)
@@ -53,7 +56,7 @@ alwaysApply: false
 | Рецепты `postgres-*` | [`recipes.py`](../../core/deployment/lifecycle/recipes.py) |
 | Старт в `start-all` | `Test-PostgresPortableEnabled` / `_postgres_portable_enabled` в `core.ps1` / `core.sh` |
 
-Константы по умолчанию (локальная разработка): host/port из `databases.yaml` (`127.0.0.1` / `5433` в example), БД `ergo_ms`, пользователь `postgres`. Типичный системный Postgres — `5432`. Пароль и порт правит человек в yaml.
+Константы по умолчанию (локальная разработка): host/port из `databases.yaml` (`127.0.0.1` / `5433` в example), БД `ergo_ms`. Типичный системный Postgres — `5432`. Пустые или шаблонные `user`/`password` при `ERGO_DB=portable_postgres` генерируются уникальными до `initdb` (`setup-full` / `install-postgres`); уже созданный кластер не переписывается. Порт правит человек в yaml.
 
 ## Когда ставить / пропускать
 

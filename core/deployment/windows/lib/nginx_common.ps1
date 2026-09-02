@@ -3,7 +3,12 @@
 
 $script:NginxVersion = '1.27.4'
 $script:NginxZipUrl = "https://nginx.org/download/nginx-$script:NginxVersion.zip"
-$script:NginxServiceName = 'ergo_ms_nginx'
+$script:NginxServiceName = Get-ErgoServiceName -Role 'nginx'
+
+function Sync-NginxServiceName {
+    param([string]$Root)
+    $script:NginxServiceName = Get-ErgoServiceName -Role 'nginx' -ProjectRoot $Root
+}
 $script:NginxConfName = 'ergo_ms'
 
 function Invoke-NginxCli {
@@ -130,14 +135,20 @@ function Install-NginxBinary {
 
     Write-ErgomsMessage -Key 'nginx_downloading' -Color Yellow -Param @{ version = $script:NginxVersion }
 
+    . (Join-Path $PSScriptRoot 'portable_archive.ps1')
     $cacheTmp = Join-Path $Root "virtual_env\cache\tmp"
+    $downloads = Join-Path $Root "virtual_env\cache\downloads"
     New-Item -ItemType Directory -Path $cacheTmp -Force | Out-Null
+    New-Item -ItemType Directory -Path $downloads -Force | Out-Null
+    $cacheZip = Join-Path $downloads "nginx-$($script:NginxVersion).zip"
     $tempZip = Join-Path $cacheTmp "nginx.zip"
     $tempExtract = Join-Path $cacheTmp "nginx_extract"
 
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $script:NginxZipUrl -OutFile $tempZip -UseBasicParsing
+        if (-not (Test-CachedRuntimeArchive -Path $cacheZip)) {
+            Save-RuntimeArchiveDownload -Url $script:NginxZipUrl -DestPath $cacheZip -Root $Root
+        }
+        Copy-Item -LiteralPath $cacheZip -Destination $tempZip -Force
 
         if (Test-Path $tempExtract) {
             Remove-Item $tempExtract -Recurse -Force

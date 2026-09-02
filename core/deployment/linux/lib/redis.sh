@@ -2,8 +2,14 @@
 # Redis management for Linux
 # Portable Redis в virtual_env/packages/redis (сборка из исходников)
 
-REDIS_SERVICE_NAME='ergo_ms_redis'
+REDIS_SERVICE_NAME="$(ergo_service_name redis)"
 REDIS_UNIT_PATH="/etc/systemd/system/${REDIS_SERVICE_NAME}.service"
+
+_sync_redis_service_name() {
+  local root="${1:-}"
+  REDIS_SERVICE_NAME="$(ergo_service_name redis "$root")"
+  REDIS_UNIT_PATH="/etc/systemd/system/${REDIS_SERVICE_NAME}.service"
+}
 
 _redis_dir() {
   local root="$1"
@@ -59,6 +65,35 @@ _redis_read_port() {
     [[ -n "$parsed" ]] && port="$parsed"
   fi
   echo "$port"
+}
+
+_redis_read_password() {
+  local root="$1"
+  local conf line
+  conf="$(_redis_conf "$root")"
+  [[ -f "$conf" ]] || return 0
+  line="$(grep -E '^requirepass[[:space:]]+' "$conf" | tail -n1 || true)"
+  [[ -n "$line" ]] || return 0
+  # requirepass secret  |  requirepass "secret"
+  line="${line#requirepass}"
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%\"}"
+  line="${line#\"}"
+  printf '%s' "$line"
+}
+
+_redis_cli_shutdown() {
+  local root="$1"
+  local cli port pass
+  cli="$(_redis_cli "$root")"
+  port="$(_redis_read_port "$root")"
+  pass="$(_redis_read_password "$root")"
+  # -c у redis-cli — cluster mode, не путь к конфигу (как на Windows).
+  if [[ -n "$pass" ]]; then
+    "$cli" -h 127.0.0.1 -p "$port" -a "$pass" --no-auth-warning shutdown
+  else
+    "$cli" -h 127.0.0.1 -p "$port" shutdown
+  fi
 }
 
 _redis_remove_stale_pidfile() {
@@ -122,11 +157,17 @@ _redis_run_install_script() {
     return 1
   fi
   "$py" "$root/core/deployment/scripts/install_redis.py" --root "$root" --port "$port"
+  restore_project_ownership "$root" "$(_redis_dir "$root")"
 }
 
 _redis_ping() {
   local root="$1"
-  local cli conf port
+  local py cli conf port
+  py="$(_redis_python "$root")"
+  if [[ -n "$py" && -x "$py" ]]; then
+    "$py" "$root/core/deployment/scripts/install_redis.py" --root "$root" --ping-only >/dev/null 2>&1
+    return $?
+  fi
   cli="$(_redis_cli "$root")"
   conf="$(_redis_conf "$root")"
   port="$(_redis_read_port "$root")"
@@ -135,7 +176,7 @@ _redis_ping() {
   if "$cli" -h 127.0.0.1 -p "$port" ping 2>/dev/null | grep -q PONG; then
     return 0
   fi
-  if [[ -f "$conf" ]] && "$cli" -c "$conf" ping 2>/dev/null | grep -q PONG; then
+  if [[ -f "$conf" ]] && "$cli" -h 127.0.0.1 -p "$port" ping 2>/dev/null | grep -q PONG; then
     return 0
   fi
   return 1
@@ -143,13 +184,13 @@ _redis_ping() {
 
 _redis_wait_for_ping() {
   local root="$1"
-  local attempts="${2:-10}"
+  local attempts="${2:-40}"
   local i
   for ((i = 1; i <= attempts; i++)); do
     if _redis_ping "$root"; then
       return 0
     fi
-    sleep 1
+    sleep 0.1
   done
   return 1
 }
@@ -168,7 +209,7 @@ After=network.target
 Type=forking
 EnvironmentFile=-__ERGO_MS_ENV__
 ExecStart=$server $conf
-ExecStop=$(_redis_cli "$root") -c $conf shutdown
+ExecStop=/bin/kill -s TERM \$MAINPID
 PIDFile=$(_redis_dir "$root")/run/redis.pid
 Restart=on-failure
 RestartSec=5
@@ -216,6 +257,7 @@ redis_install() {
 
 redis_install_service() {
   local root="$1"
+  _sync_redis_service_name "$root"
   if ! _redis_is_installed "$root"; then
     write_ergoms_message error_not_installed_run red --stderr "name=Redis" "cmd=ergoms install-redis"
     return 1
@@ -252,33 +294,19 @@ redis_start() {
     return 0
   fi
 
-  redis_stop "$root" quiet 2>/dev/null || true
-  _redis_remove_stale_pidfile "$root"
-
   if systemctl is-active --quiet redis.service 2>/dev/null \
     || systemctl is-active --quiet redis-server.service 2>/dev/null; then
     echo "[WARNING] System Redis service is active and may use port $(_redis_read_port "$root")." >&2
     echo "[WARNING] Stop it first: sudo systemctl disable --now redis.service redis-server.service" >&2
   fi
 
-  local server conf
-  server="$(_redis_server "$root")"
-  conf="$(_redis_conf "$root")"
-  write_ergoms_message arrow_starting cyan "" "name=Redis"
-  if ! "$server" "$conf"; then
-    write_ergoms_message redis_error_server_cli red --stderr "path=$(_redis_log_path "$root")"
+  local py
+  py="$(_redis_python "$root")"
+  if [[ -z "$py" ]]; then
+    write_ergoms_message python_not_found_setup red --stderr
     return 1
   fi
-
-  if _redis_wait_for_ping "$root" 10; then
-    write_ergoms_message ok_started green "" "name=Redis"
-  else
-    write_ergoms_message error_start_failed_check_logs red --stderr "name=Redis" "path=$(_redis_log_path "$root")"
-    if [[ -r /proc/sys/vm/overcommit_memory ]] && [[ "$(cat /proc/sys/vm/overcommit_memory)" != "1" ]]; then
-      echo "[WARNING] vm.overcommit_memory is not 1; run: sudo sysctl vm.overcommit_memory=1" >&2
-    fi
-    return 1
-  fi
+  "$py" "$root/core/deployment/scripts/redis_dev.py" --root "$root" --start
 }
 
 _redis_is_running() {
@@ -329,15 +357,12 @@ redis_stop() {
   fi
 
   if [[ -n "$root" ]] && _redis_is_installed "$root"; then
-    local cli conf pidfile pid i
+    local cli pidfile pid i
     cli="$(_redis_cli "$root")"
-    conf="$(_redis_conf "$root")"
     pidfile="$(_redis_pidfile "$root")"
     if [[ -x "$cli" ]]; then
       write_ergoms_message redis_arrow_shutdown cyan
-      "$cli" -c "$conf" shutdown 2>/dev/null \
-        || "$cli" -h 127.0.0.1 -p "$(_redis_read_port "$root")" shutdown 2>/dev/null \
-        || true
+      _redis_cli_shutdown "$root" >/dev/null 2>&1 || true
       for ((i = 1; i <= 10; i++)); do
         if [[ ! -f "$pidfile" ]]; then
           break

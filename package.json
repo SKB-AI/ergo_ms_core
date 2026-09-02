@@ -1,6 +1,6 @@
 {
   "name": "ergo-ms-root",
-  "version": "2.7.8",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "description": "ErgoMS — скрипты VS Code расширений (npm workspace клиента: virtual_env/npm)",

@@ -20,6 +20,7 @@ from ergo_modes import (  # noqa: E402
     effective_nginx_enabled,
     effective_postgres_force_install,
     effective_redis_enabled,
+    ergo_db,
     should_install_portable_postgres,
 )
 
@@ -46,6 +47,7 @@ def _values_for_modes() -> dict[str, str]:
         'ERGO_PROXY',
         'ERGO_BROKER',
         'ERGO_DB',
+        'ERGO_JUPYTER',
         'NGINX_ENABLED',
         'REDIS_ENABLED',
         'DOCKER_ENABLED',
@@ -100,6 +102,23 @@ def is_nginx_enabled() -> bool:
 
 def is_redis_enabled() -> bool:
     return effective_redis_enabled(_values_for_modes())
+
+
+def is_search_enabled() -> bool:
+    from ergo_modes import effective_search_enabled  # noqa: WPS433
+
+    return effective_search_enabled(_values_for_modes())
+
+
+def is_jupyter_enabled() -> bool:
+    from ergo_modes import effective_jupyter_enabled  # noqa: WPS433
+
+    return effective_jupyter_enabled(_values_for_modes())
+
+
+def get_ergo_db() -> str:
+    """Режим default БД из ERGO_DB (sqlite|postgres|portable_postgres|mysql|mssql)."""
+    return ergo_db(_values_for_modes())
 
 
 def is_docker_enabled() -> bool:

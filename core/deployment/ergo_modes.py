@@ -24,6 +24,14 @@ ERGO_EMAIL_VALUES = frozenset({'none', 'smtp'})
 ERGO_MEDIA_VALUES = frozenset({'local', 'remote'})
 ERGO_ENV_VALUES = frozenset({'development', 'production'})
 ERGO_REALTIME_VALUES = frozenset({'websocket', 'sse', 'http_polling'})
+ERGO_SECURITY_VALUES = frozenset({'open', 'standard', 'hardened', 'maximum'})
+ERGO_SECURITY_ENFORCE_VALUES = frozenset({'off', 'warn', 'raise'})
+_ERGO_SECURITY_RANKS = {
+    'open': 0,
+    'standard': 1,
+    'hardened': 2,
+    'maximum': 3,
+}
 _ERGO_ENV_ALIASES = {
     'dev': 'development',
     'prod': 'production',
@@ -109,6 +117,27 @@ def normalize_deploy_type(raw: str, default: str = 'development') -> str:
 def ergo_env(values: Mapping[str, str]) -> str:
     """development | production (допускаются alias: dev | prod)."""
     return normalize_deploy_type(_get(values, 'ERGO_ENV', 'development'))
+
+
+def ergo_security(values: Mapping[str, str]) -> str:
+    """Уровень безопасности: open | standard | hardened | maximum (default standard)."""
+    value = _get(values, 'ERGO_SECURITY', 'standard').lower()
+    return value if value in ERGO_SECURITY_VALUES else 'standard'
+
+
+def ergo_security_enforce(values: Mapping[str, str]) -> str:
+    """Реакция CLI на нарушения: off | warn | raise (default warn)."""
+    value = _get(values, 'ERGO_SECURITY_ENFORCE', 'warn').lower()
+    return value if value in ERGO_SECURITY_ENFORCE_VALUES else 'warn'
+
+
+def security_level_rank(level: str) -> int:
+    """Ранг уровня; неизвестный уровень → rank of standard."""
+    return _ERGO_SECURITY_RANKS.get((level or '').strip().lower(), 1)
+
+
+def ergo_security_is_explicit(values: Mapping[str, str]) -> bool:
+    return _has_explicit(values, 'ERGO_SECURITY')
 
 
 def effective_deploy_type(
@@ -208,6 +237,26 @@ def effective_jupyter_access_mode(values: Mapping[str, str]) -> str | None:
     return None
 
 
+def effective_jupyter_behind_nginx(values: Mapping[str, str]) -> bool:
+    """
+    Jupyter слушает за nginx.
+
+    True, если прокси включён и режим доступа nginx:
+    ERGO_JUPYTER=nginx, явный API_JUPYTER_ACCESS_MODE=nginx,
+    либо при auto — legacy API_JUPYTER_BEHIND_NGINX=true.
+    """
+    if not effective_nginx_enabled(values):
+        return False
+    explicit = _get(values, 'API_JUPYTER_ACCESS_MODE').lower()
+    if explicit == 'nginx':
+        return True
+    if explicit in ('local', 'lan'):
+        return False
+    if ergo_jupyter(values) == 'nginx':
+        return True
+    return env_bool(_get(values, 'API_JUPYTER_BEHIND_NGINX'))
+
+
 def effective_email_enabled(values: Mapping[str, str]) -> bool:
     if _has_explicit(values, 'EMAIL_ENABLED'):
         return env_bool(_get(values, 'EMAIL_ENABLED'))
@@ -244,3 +293,22 @@ def effective_docker_profile_jupyter(values: Mapping[str, str]) -> bool:
     if _has_explicit(values, 'DOCKER_PROFILE_JUPYTER'):
         return env_bool(_get(values, 'DOCKER_PROFILE_JUPYTER'))
     return effective_jupyter_enabled(values)
+
+
+def effective_docker_profile_loadtest(values: Mapping[str, str]) -> bool:
+    """Явный DOCKER_PROFILE_LOADTEST (по умолчанию выкл.)."""
+    if _has_explicit(values, 'DOCKER_PROFILE_LOADTEST'):
+        return env_bool(_get(values, 'DOCKER_PROFILE_LOADTEST'))
+    return False
+
+
+def effective_search_enabled(values: Mapping[str, str]) -> bool:
+    if _has_explicit(values, 'ERGO_SEARCH_ENABLED'):
+        return env_bool(_get(values, 'ERGO_SEARCH_ENABLED'))
+    return True
+
+
+def effective_docker_profile_meilisearch(values: Mapping[str, str]) -> bool:
+    if _has_explicit(values, 'DOCKER_PROFILE_MEILISEARCH'):
+        return env_bool(_get(values, 'DOCKER_PROFILE_MEILISEARCH'))
+    return effective_search_enabled(values)

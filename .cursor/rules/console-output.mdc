@@ -1,7 +1,8 @@
 ---
 description: Метки консольного вывода ergoms — [OK]/[ERROR]/[WARNING]/[SKIP] на английском; текст через cli_locale.py и каталоги locales/
 globs:
-  - "core/deployment/**"
+  - "**/cli_messages.yaml"
+  - "**/cli_messages/**"
   - "**/console_tags.py"
   - "**/cli_locale.py"
   - "**/ergoms_console.py"

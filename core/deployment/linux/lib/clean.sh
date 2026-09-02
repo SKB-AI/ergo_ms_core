@@ -9,8 +9,11 @@ stop_blocking_processes_for_clean() {
 
   write_ergoms_message clean_stopping_blockers gray
 
-  # Все OS-службы проекта — ergo_ms_*; ergo-* — legacy до переустановки
+  # Службы текущего корня — {prefix}_*; ergo-* только у префикса по умолчанию
   if command -v systemctl >/dev/null 2>&1; then
+    local prefix pattern
+    prefix="$(ergo_service_prefix "$root")"
+    pattern="${prefix}_"
     while IFS= read -r unit; do
       [[ -z "$unit" ]] && continue
       if systemctl is-active --quiet "$unit" 2>/dev/null; then
@@ -21,7 +24,24 @@ stop_blocking_processes_for_clean() {
           write_ergoms_message clean_warn_stop_service_root yellow --stderr "name=$unit"
         fi
       fi
-    done < <(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '/ergo_ms_|ergo-/ {print $1}')
+    done < <(
+      systemctl list-units --type=service --all --no-legend 2>/dev/null | awk -v p="$pattern" '
+        index($1, p) { print $1 }
+      '
+    )
+    if [[ "$prefix" == "ergo_ms" ]]; then
+      while IFS= read -r unit; do
+        [[ -z "$unit" ]] && continue
+        if systemctl is-active --quiet "$unit" 2>/dev/null; then
+          if systemctl stop "$unit" 2>/dev/null; then
+            write_ergoms_message clean_service_stopped gray "" "name=$unit"
+            stopped=1
+          else
+            write_ergoms_message clean_warn_stop_service_root yellow --stderr "name=$unit"
+          fi
+        fi
+      done < <(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '/^ergo-/ {print $1}')
+    fi
   fi
 
   if command -v fuser >/dev/null 2>&1; then
@@ -291,6 +311,7 @@ clear_project_dependencies() {
     "virtual_env/resources"
     "virtual_env/trained_models"
     "virtual_env/cache"
+    # legacy sibling (до переноса в cache/docker-cache)
     "virtual_env/docker-cache"
   )
 

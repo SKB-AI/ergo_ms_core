@@ -61,11 +61,17 @@ _install_ergoms_cli
 _run_python_script "$WAIT_SCRIPT_IMAGE" "$WAIT_SCRIPT_MOUNTED"
 _run_python_script "$SETUP_SCRIPT_IMAGE" "$SETUP_SCRIPT_MOUNTED"
 
-if command -v poetry >/dev/null 2>&1 && [ -f /app/pyproject.toml ]; then
-  VENV_BIN="$(poetry env info -p 2>/dev/null)/bin" || VENV_BIN=""
-  if [ -n "$VENV_BIN" ] && [ -d "$VENV_BIN" ]; then
-    export PATH="$VENV_BIN:$PATH"
+# Не вызываем `poetry env info` на пустом volume — это создаёт голый venv
+# и прячет python образа. Берём уже существующий интерпретатор.
+VENV_BIN=""
+for _py in /app/virtual_env/python/bin/python /app/virtual_env/python/*/bin/python; do
+  if [ -x "$_py" ]; then
+    VENV_BIN="$(dirname "$_py")"
+    break
   fi
+done
+if [ -n "$VENV_BIN" ]; then
+  export PATH="$VENV_BIN:$PATH"
 fi
 
 if [ -n "${ERGO_DOCKER_SERVICE_NAME:-}" ] && [ "${ERGO_DOCKER_CONSOLE_OUTPUT:-}" != "1" ]; then

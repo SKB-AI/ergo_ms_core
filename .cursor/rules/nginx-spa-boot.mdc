@@ -1,0 +1,89 @@
+---
+description: Клиент за nginx — пустой экран, пустая консоль, client-build, Login-маршруты, nginx-access.log
+globs:
+  - core/client/src/js/routers.js
+  - core/client/src/config/routes.js
+  - core/client/src/js/clientBootTrace.js
+  - core/client/src/App.vue
+  - core/deployment/nginx/**
+  - core/deployment/docker/nginx/**
+alwaysApply: false
+---
+
+# Клиент за nginx: пустой экран и пустая консоль
+
+Nginx раздаёт **`core/client/dist`**, а не Vite. Правка Vue без `ergoms client-build` на адресе прокси не видна. Консоль DevTools часто пустая, хотя приложение зависло.
+
+## Кратко
+
+- После правок клиента за `ERGO_PROXY=nginx` / `ergoms start-nginx-dev` сначала **`ergoms client-build`**, затем жёсткое обновление страницы (Ctrl+F5). `reload-nginx` нужен, когда менялся **шаблон nginx**, а не hashed-файлы в `dist`.
+- Пустая консоль **не** значит, что JS не работает. Смотри **`logs/nginx-access.log`**: какие hashed-чанки и `/api/` реально запрошены.
+- Форма входа не откроется, если в таблице Vue Router нет маршрута с `name: 'Login'` и `path: '/login'`. Редирект `{ name: 'Login' }` тогда не резолвится, `router.isReady()` не завершается, маска снимается по таймауту.
+- `POST /api/cms/client-log/` требует JWT. Гость ничего не пишет в `logs/client-browser.log`.
+- След в access-логе без JWT — GET `/__client-boot?e=…` (картинка), не `sendBeacon` POST: без обновлённого location nginx SPA отвечает **405**. В консоль `[boot]` не пиши на каждый переход.
+
+## Обязательно
+
+1. Сверь `core/client/dist/index.html`: hashed `index-*.js` должен совпасть с строками в `nginx-access.log`.
+2. Если в access есть `LayoutStart`, но нет `LoginPage-*.js`, первый `beforeEach` не закончил переход на вход.
+3. Маршруты входа держи **именованным** `export const authRoutes` в [`routes.js`](../../core/client/src/config/routes.js). Компоненты — `() => import(...)`, не строка `@/…`: иначе Rolldown при `includeDependenciesRecursively: false` выкидывает всю таблицу, и в dist нет `/login`. Не делай одновременно `export default { coreRoutes, authRoutes }` и named export одних массивов.
+4. В `beforeEach` страницы без сессии (`isAnonymousRoute`) возвращай сразу, **до** module guards и ADP. Если access пуст, но cookie `ergo_session` есть — `await whenSessionReady()` (тот же промис, что bootstrap), и только потом решай про `/login`. Без cookie на вход сразу, без ожидания refresh.
+5. Редирект на вход предпочтительно `{ path: '/login' }`, не только `{ name: 'Login' }`.
+6. `errorHandler` Vue должен вызывать `logError`. Иначе production глотает ошибки рендера, и DevTools пустой.
+7. Location `/__client-boot` в шаблонах nginx — `return 204` (host HTTP, HTTPS и Docker). Клиент шлёт **GET**.
+
+## Запрещено
+
+- Чинить «белый экран за nginx» ослаблением CSP / CORS / `baseUrl`, пока не проверен актуальный `dist` ([`diagnose-before-code.mdc`](diagnose-before-code.mdc)).
+- Считать пустой `client-browser.log` доказательством, что клиент не выполнялся.
+- `sendBeacon` или POST на URL, который nginx отдаёт как SPA (`try_files` → `index.html`): метод не GET → **405**, консоль забита красным.
+- Сразу слать на `/login` при F5, если есть cookie `ergo_session`: форма входа мигнёт, затем bootstrap вернёт в кабинет. Сначала дождись restore.
+
+## Как читать логи
+
+| Где | Что видно |
+|-----|-----------|
+| Консоль браузера | Часто пусто: `logger.js` подменяет `console.*`; гость не доходит до `logError` на сервер. |
+| `logs/nginx-access.log` | Документ `/`, hashed бандлы, `/api/settings/themes/active/`, есть ли `LoginPage-*.js`, запросы `/__client-boot?e=`. |
+| `logs/nginx-error.log` | 404 на `dist/index.html`, если сборку оборвали и `dist` пустой. |
+| `logs/api.log` | `themes/active`, `registration-settings` — приложение уже монтировалось. |
+| `logs/client-browser.log` | Только с JWT. Гость / зависон до `logError` — файл молчит. |
+
+Маркер «форма входа не грузится»: в access есть оболочка старта (`LayoutStart`), нет чанка страницы входа.
+
+Первый `to` часто не `/login`, а сохранённый путь вроде `/admin-panel/menu`. Без маршрута `Login` редирект гостя зацикливается. С cookie `ergo_session` guard сначала ждёт restore и остаётся на кабинете — не открывает форму входа «на секунду».
+
+На Windows `reload-nginx` может получить EPERM на `dist/assets`, пока nginx держит hashed-файлы. Для новой статики достаточно `client-build` и `Cache-Control: no-store` на `index.html`.
+
+## Базовый пример
+
+```javascript
+// BAD — default + named одних массивов; в dist authRoutes может стать {}
+export { coreRoutes, authRoutes }
+export default { coreRoutes, authRoutes }
+
+// GOOD
+export const coreRoutes = [ /* … */ ]
+export const authRoutes = [ /* Login, StartPage, … */ ]
+```
+
+```javascript
+// BAD — POST в SPA
+navigator.sendBeacon('/__client-boot?e=guard')
+
+// GOOD — GET, попадает в nginx-access.log без JWT
+const img = new Image()
+img.src = '/__client-boot?e=guard&n=Login&p=/login'
+```
+
+Эталон маршрутов: [`core/client/src/config/routes.js`](../../core/client/src/config/routes.js). Guard: [`routers.js`](../../core/client/src/js/routers.js). След: [`clientBootTrace.js`](../../core/client/src/js/clientBootTrace.js). Location: `core/deployment/nginx/ergo_ms.conf.template` (`location = /__client-boot`).
+
+## Связанные правила
+
+| Тема | Файл |
+|------|------|
+| Сначала dist / перезапуск, не патч в коде | [`diagnose-before-code.mdc`](diagnose-before-code.mdc) |
+| nginx, relative API | [`deployment-infra.mdc`](deployment-infra.mdc) |
+| Guard цепочка | [`route-guards.mdc`](route-guards.mdc) |
+| logError и client-browser.log | [`log-error.mdc`](log-error.mdc) |
+| Для людей | [`.docs/troubleshooting.md`](../../.docs/troubleshooting.md) |

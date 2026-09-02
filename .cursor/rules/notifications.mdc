@@ -1,16 +1,17 @@
 ---
-description: Уведомления — создание через мост, каталог событий
+description: Уведомления — создание и отзыв через мост, каталог событий
 alwaysApply: false
 ---
 # Уведомления
 
-Модули **не импортируют** код уведомлений ядра. Отправка — через мост:
+Модули **не импортируют** код уведомлений ядра. Создание и отзыв — через мост.
 
 ```python
 from src.core.integrations import bridge
+from src.core.integrations.module_contracts import NOTIFICATIONS_CREATE, NOTIFICATIONS_RECALL
 
 bridge.call(
-    'notifications.create',
+    NOTIFICATIONS_CREATE,
     recipient=user,
     title='Заголовок',
     body='Текст',
@@ -20,21 +21,37 @@ bridge.call(
     meta={'item_name': '…'},
     idempotency_key='<name>:submit:<uuid>',
 )
+
+# Когда доменное действие сделало уведомление неактуальным:
+bridge.call(NOTIFICATIONS_RECALL, idempotency_key='<name>:submit:<uuid>')
+# или несколько ключей:
+bridge.call(NOTIFICATIONS_RECALL, idempotency_keys=['…', '…'])
 ```
 
 Сбой уведомления не должен ломать основной API — оборачивай в `try/except`.
+
+## Жизненный цикл
+
+| Состояние | Как |
+|-----------|-----|
+| Inbox / колокольчик | создание; восстановление из архива |
+| Архив | вручную «В архив» или авто (прочитанные старше N дней пользователя: 7/14/30/60/90, default 14) |
+| Отозвано | только `notifications.recall` по `idempotency_key` — скрыто из UI |
+| Удаление пользователем | **нет** (endpoint удалён) |
 
 ## Новое событие в модуле
 
 1. Описать в `api/notification_catalog.py` (`event_key`, подписи, каналы in_app/email)
 2. Зарегистрировать в `api/integrations.py`: `bridge.provide_many('notifications.event_definitions', ...)`
 3. Вызов — в `notification_events.py`
+4. При отмене/смене статуса — `NOTIFICATIONS_RECALL` с тем же `idempotency_key`
 
 Эталон: `modules/<name>/api/` (`notification_catalog.py`, `notification_events.py`, `integrations.py`).
+
 ## Каналы
 
 - in_app — лента + realtime (`websocket` или `http_polling`, см. [`realtime.mdc`](realtime.mdc))
-- email — через Celery после commit
+- email — Celery после commit; пауза из env `NOTIFICATIONS_EMAIL_DELAY_SECONDS` (default `300` = 5 мин, `0` = сразу). К моменту задачи отозванное (`notifications.recall` / `deleted_at`) письмо не уходит (`SKIPPED`)
 
 Пользователь включает каналы в настройках. Событие вне каталога — in_app может уйти, email нет.
 
@@ -53,5 +70,5 @@ Lucide, PascalCase (`BookOpen`). Резолвер: `core/client/src/core/notific
 | Мост между модулями | [`modules.mdc`](modules.mdc) |
 | Аудит (тот же паттерн) | [`audit.mdc`](audit.mdc) |
 | public_id в URL | [`security.mdc`](security.mdc) |
-| Celery (email-канал) | [`celery.mdc`](celery.mdc) |
+| Celery (email-канал, beat автоархива) | [`celery.mdc`](celery.mdc) |
 | WebSocket / polling | [`realtime.mdc`](realtime.mdc) |

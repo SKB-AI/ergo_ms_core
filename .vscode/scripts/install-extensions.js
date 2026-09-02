@@ -1,3 +1,4 @@
+import { spawnSync } from 'child_process';
 import { readdir, mkdir, rm, readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -7,6 +8,7 @@ import {
   copyDirectory,
   installExtensionFromVsix,
   removeLegacyExtensionDirs,
+  resolveProjectPython,
   runCodeCli,
 } from '../lib/extension-cli.js';
 import { createRequire } from 'module';
@@ -18,9 +20,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const projectRoot = join(__dirname, '..');
+const repoRoot = join(projectRoot, '..');
 const extensionsDir = join(projectRoot, 'local-extensions');
 const sourceExtensionsDir = join(projectRoot, 'extensions');
 const tempRoot = join(projectRoot, '.temp-extract');
+
+function applyCursorBrowserPolicy(root) {
+  const pythonExe = resolveProjectPython(root);
+  const scriptPath = join(root, 'core', 'deployment', 'scripts', 'cursor_ide_browser_policy.py');
+  if (!pythonExe || !existsSync(scriptPath)) {
+    return;
+  }
+  const result = spawnSync(pythonExe, [scriptPath], {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  const out = `${result.stdout || ''}${result.stderr || ''}`.trim();
+  if (out) {
+    console.log(out);
+  }
+}
 
 /** @returns {number} negative if a<b, 0 if equal, positive if a>b */
 function compareSemver(a, b) {
@@ -117,13 +137,23 @@ async function installUserConfigToRemote() {
       return false;
     }
 
+    const packageJson = JSON.parse(
+      await readFile(join(sourceExtensionDir, 'package.json'), 'utf-8'),
+    );
+    const publisher = String(packageJson.publisher || '');
+    const name = String(packageJson.name || '');
+    const version = String(packageJson.version || '');
+    if (!publisher || !name || !version) {
+      return false;
+    }
+    const extensionDirName = `${publisher}.${name}-${version}`;
+
     let installed = false;
-    const extensionName = 'ergo-ms-user-config-1.2.0';
 
     for (const remoteDir of remoteDirs) {
       try {
         await mkdir(remoteDir, { recursive: true });
-        const targetDir = join(remoteDir, extensionName);
+        const targetDir = join(remoteDir, extensionDirName);
 
         if (existsSync(targetDir)) {
           await rm(targetDir, { recursive: true, force: true });
@@ -189,6 +219,7 @@ async function installExtensions() {
         process.exit(1);
       }
       console.log('\n[OK] Установка расширений завершена.');
+      applyCursorBrowserPolicy(repoRoot);
       console.log('Перезапустите IDE (Developer: Reload Window) для применения изменений.\n');
       return;
     }
@@ -246,11 +277,15 @@ async function installExtensions() {
       }
     }
 
-    // Исходники без соответствующего VSIX (например только что добавленный module-mcp)
+    // Исходники новее VSIX или без VSIX — ставим из .vscode/extensions/
     if (existsSync(sourceExtensionsDir)) {
-      const vsixNames = new Set(
-        vsixFiles.map((f) => f.replace(/-\d+\.\d+\.\d+\.vsix$/i, '')),
-      );
+      const vsixByName = new Map();
+      for (const file of vsixFiles) {
+        const m = file.match(/^(.*)-(\d+\.\d+\.\d+)\.vsix$/i);
+        if (m) {
+          vsixByName.set(m[1], m[2]);
+        }
+      }
       const entries = await readdir(sourceExtensionsDir, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) {
@@ -262,21 +297,33 @@ async function installExtensions() {
           continue;
         }
         let pkgName = '';
+        let pkgVer = '';
         try {
           const pkg = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
           pkgName = String(pkg.name || '');
+          pkgVer = String(pkg.version || '');
         } catch {
           continue;
         }
-        if (!pkgName || vsixNames.has(pkgName)) {
+        if (!pkgName || !pkgVer) {
           continue;
         }
-        console.log(`\n-> VSIX для ${pkgName} нет — установка из исходников: ${entry.name}`);
-        await installFromSourceDir(sourceDir, homeDir);
+        const vsixVer = vsixByName.get(pkgName);
+        if (!vsixVer) {
+          console.log(`\n-> VSIX для ${pkgName} нет — установка из исходников: ${entry.name}`);
+          await installFromSourceDir(sourceDir, homeDir);
+          continue;
+        }
+        if (compareSemver(pkgVer, vsixVer) > 0) {
+          console.log(
+            `[INFO] Исходники ${pkgName} ${pkgVer} новее VSIX ${vsixVer}. Ставим VSIX. Чтобы обновить пакет: ergoms update-vsix`,
+          );
+        }
       }
     }
 
     console.log('\n[OK] Установка расширений завершена.');
+    applyCursorBrowserPolicy(repoRoot);
     console.log('Перезапустите IDE (Developer: Reload Window) для применения изменений.\n');
   } catch (error) {
     if (error.code === 'ENOENT') {

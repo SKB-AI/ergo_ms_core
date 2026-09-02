@@ -1,6 +1,7 @@
 # Справочный шаблон базовых сервисов логов (не читается runtime).
 # Актуальный список для Logs: All Services — provider ergo-sync / target logs-all
-# (sync_vscode_logs_services.py --json logs-all): nginx vs client и Redis из .env.
+# (sync_vscode_logs_services.py --json logs-all): nginx vs client, Redis и Meilisearch из .env.
+# JupyterLab для Start All — target jupyter-dev (ERGO_JUPYTER не none), не этот файл.
 # Воркеры — из celery_workers.yaml; модули — vscode.tasks.yaml (include_in: logs-all).
 
 services:
@@ -11,3 +12,5 @@ services:
     description: "Media API (CDN / file server)"
   ergo_ms_celery_beat:
     description: "Celery Beat scheduler"
+  # ergo_ms_redis — при ERGO_BROKER=redis / REDIS_ENABLED
+  # ergo_ms_meilisearch — при ERGO_SEARCH_ENABLED (по умолчанию true)

@@ -16,7 +16,16 @@ from .models import ConfigTemplate, ConfigTemplateRegistry, ScaffoldAction, Scaf
 
 
 class ConfigScaffolder:
-    """Создаёт рабочие конфиги из example-файлов, не перезаписывая существующие."""
+    """Создаёт рабочие конфиги из example-файлов.
+
+    По умолчанию существующие файлы не перезаписывает. ``overwrite=True`` —
+    замена содержимым шаблона (только по явной команде). Для ``.env``
+    стратегия сброса возвращает уже заданные секреты после копирования.
+    У ``databases.yaml`` уже заданные user/password возвращаются после
+    копирования шаблона; секции с секретами, которых нет в минимальном
+    наборе, дописываются обратно. При ``ERGO_BROKER=redis`` в существующий
+    файл дописывается секция redis, если её ещё нет.
+    """
 
     def __init__(
         self,
@@ -26,8 +35,11 @@ class ConfigScaffolder:
         self._project_root = project_root.resolve()
         self._templates = templates or ConfigTemplateRegistry.all_templates(self._project_root)
 
-    def run(self) -> list[ScaffoldResult]:
-        return [template.execute(self._project_root) for template in self._templates]
+    def run(self, *, overwrite: bool = False) -> list[ScaffoldResult]:
+        return [
+            template.execute(self._project_root, overwrite=overwrite)
+            for template in self._templates
+        ]
 
 
 def format_scaffold_result(result: ScaffoldResult) -> str:
@@ -37,8 +49,13 @@ def format_scaffold_result(result: ScaffoldResult) -> str:
         suffix = f' ({result.detail})' if result.detail else ''
         return t('scaffold_created', target=target, suffix=suffix)
 
+    if result.action is ScaffoldAction.OVERWRITTEN:
+        suffix = f' ({result.detail})' if result.detail else ''
+        return t('scaffold_overwritten', target=target, suffix=suffix)
+
     if result.action is ScaffoldAction.SKIPPED_EXISTS:
-        return t('scaffold_exists_skip', target=target)
+        suffix = result.detail or ''
+        return t('scaffold_exists_skip', target=target, suffix=suffix)
 
     if result.action is ScaffoldAction.SKIPPED_NO_SOURCE:
         return f'    {format_console("warning", t("scaffold_example_missing", source_rel=result.source_rel))}'

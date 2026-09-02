@@ -1,6 +1,6 @@
 {
   "extension.displayName": "ERGO MS User Config",
-  "extension.description": "Applique les paramètres et raccourcis du projet depuis user_settings.json et user_keybindings.json",
+  "extension.description": "Applique les paramètres, raccourcis et la politique du navigateur Cursor depuis user_settings.json et user_keybindings.json",
   "command.applySettings.title": "ERGO MS : Appliquer les paramètres utilisateur",
   "command.applyKeybindings.title": "ERGO MS : Appliquer les raccourcis utilisateur",
   "command.applyAll.title": "ERGO MS : Appliquer toute la configuration utilisateur",
