@@ -174,17 +174,19 @@ class ModuleCatalog:
         return None
 
     def is_core_api_process(self) -> bool:
-        """
-        HTTP-процесс ядра (start_api): в microservice исключает MICROSERVICE_MODULES.
-
-        Worker без ``--module`` по-прежнему грузит все non-disabled.
-        ``start_api`` обязан выставлять ``ERGO_PROCESS_ROLE=api``.
-        """
+        """HTTP-процесс ядра (start_api). ``start_api`` ставит ``ERGO_PROCESS_ROLE=api``."""
         return self._process_role in _CORE_API_PROCESS_ROLES
 
     def is_core_schedule_process(self) -> bool:
-        """HTTP ядра или общий Beat: в microservice не грузит MICROSERVICE_MODULES."""
+        """HTTP ядра или общий Beat."""
         return self._process_role in _CORE_SCHEDULE_PROCESS_ROLES
+
+    def is_core_side_process(self) -> bool:
+        """Не процесс модуля: API, beat, worker и команды Django без роли.
+
+        Пустой ``ERGO_PROCESS_ROLE`` на ядре — тоже сторона ядра, а не «грузи все».
+        """
+        return self.module_process_name() is None
 
     def is_loadable_in_process(self, module_name: str) -> bool:
         """Модуль должен попасть в INSTALLED_APPS / URL discovery этого процесса."""
@@ -198,9 +200,8 @@ class ModuleCatalog:
         if module_only is not None:
             return module_name == module_only
 
-        if self.is_microservice_mode() and self.is_core_schedule_process():
-            if module_name in self._microservice_modules:
-                return False
+        if self.is_microservice_mode() and module_name in self._microservice_modules:
+            return False
 
         return True
 

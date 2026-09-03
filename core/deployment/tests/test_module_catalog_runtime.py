@@ -27,6 +27,28 @@ class ModuleCatalogRuntimeTests(unittest.TestCase):
         self.assertFalse(catalog.is_loadable_in_process('demo_mod'))
         self.assertTrue(catalog.is_loadable_in_process('other_mod'))
 
+    def test_empty_role_excludes_microservice_modules(self) -> None:
+        catalog = ModuleCatalog(
+            project_root=self._empty_root(),
+            module_runtime='microservice',
+            process_role='',
+            microservice_modules=frozenset({'demo_mod'}),
+        )
+        self.assertTrue(catalog.is_core_side_process())
+        self.assertFalse(catalog.is_loadable_in_process('demo_mod'))
+        self.assertTrue(catalog.is_loadable_in_process('other_mod'))
+
+    def test_worker_role_excludes_microservice_modules(self) -> None:
+        catalog = ModuleCatalog(
+            project_root=self._empty_root(),
+            module_runtime='microservice',
+            process_role='worker',
+            microservice_modules=frozenset({'demo_mod'}),
+        )
+        self.assertTrue(catalog.is_core_side_process())
+        self.assertFalse(catalog.is_loadable_in_process('demo_mod'))
+        self.assertTrue(catalog.is_loadable_in_process('other_mod'))
+
     def test_core_beat_excludes_microservice_modules(self) -> None:
         catalog = ModuleCatalog(
             project_root=self._empty_root(),

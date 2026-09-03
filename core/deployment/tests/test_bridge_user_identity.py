@@ -30,7 +30,9 @@ def _load_user_identity():
 
 _user_identity = _load_user_identity()
 apply_user_ids = _user_identity.apply_user_ids
+bridge_user_kwargs = _user_identity.bridge_user_kwargs
 is_user_like = _user_identity.is_user_like
+resolve_incoming_user = _user_identity.resolve_incoming_user
 
 
 class _FakeUser:
@@ -68,6 +70,21 @@ class BridgeUserIdentityTests(unittest.TestCase):
     def test_namespace_without_auth_is_not_user_like(self) -> None:
         value = SimpleNamespace(pk=1, public_id='x')
         self.assertFalse(is_user_like(value))
+
+    def test_bridge_user_kwargs_keeps_local_user_and_ids(self) -> None:
+        user = _FakeUser()
+        result = bridge_user_kwargs(user, extra=1)
+        self.assertIs(result['user'], user)
+        self.assertEqual(result['user_id'], 7)
+        self.assertEqual(result['user_public_id'], 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
+        self.assertEqual(result['extra'], 1)
+        self.assertNotIn('user', apply_user_ids(result))
+
+    def test_resolve_incoming_user_without_django_builds_namespace(self) -> None:
+        resolved = resolve_incoming_user(user_id=3, user_public_id='pub-1')
+        self.assertEqual(resolved.pk, 3)
+        self.assertEqual(resolved.public_id, 'pub-1')
+        self.assertTrue(resolved.is_authenticated)
 
 
 if __name__ == '__main__':

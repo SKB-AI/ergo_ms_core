@@ -50,7 +50,7 @@ alwaysApply: false
 | `.cursor/rules/<topic>.mdc` | доменные запреты и эталоны кода |
 | `.env.example` | есть модульные переменные окружения |
 | `ergoms.help.yaml` | есть `ergoms.conf` |
-| `api/user_guides/*.md` | необязательно: пользовательские шпаргалки; процесс публикует их в пакет `knowledge/<имя>/` |
+| `api/user_guides/*.md` | необязательно: сценарии, которых нет в разметке (несколько шагов подряд). Экраны, поля и кнопки ядро само кладёт в пакет `knowledge/` при `publish-knowledge-packs` |
 | `user_description` в `PERMISSION_CATALOG` | необязательно: 1–3 предложения «зачем модуль» для пользователя |
 
 Инфра-модуль без UI может не иметь `client/` и клиентских разделов в README — опиши ops и bridge. Пустой submodule без `api/apps.py` и без `client/` не считается установленным: `README.md` и `AGENTS.md` для него не требуются, пока каталог не checkout’нут. Проверка: `ergoms core-rules-check`.
