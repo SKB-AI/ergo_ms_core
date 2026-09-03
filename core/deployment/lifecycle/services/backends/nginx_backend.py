@@ -68,7 +68,16 @@ def _is_nginx_service_active() -> bool:
 
 def shutil_which(name: str) -> str | None:
     from shutil import which
+
     return which(name)
+
+
+def _linux_sudo_prefix() -> list[str]:
+    if os.name == 'nt':
+        return []
+    if hasattr(os, 'geteuid') and os.geteuid() != 0 and shutil_which('sudo'):
+        return ['sudo']
+    return []
 
 
 def _main_conf_arg(main_conf: Path) -> str:
@@ -126,8 +135,9 @@ def cmd_reload(root: Path) -> int:
     main_conf_arg = _main_conf_arg(main_conf)
 
     print(format_console('info', t('checking_config')))
+    sudo_prefix = _linux_sudo_prefix()
     test = subprocess.run(
-        [str(exe), '-t', '-c', main_conf_arg],
+        [*sudo_prefix, str(exe), '-t', '-c', main_conf_arg],
         cwd=str(nginx_dir),
         check=False,
     )
@@ -136,19 +146,14 @@ def cmd_reload(root: Path) -> int:
         return test.returncode
 
     if os.name != 'nt' and shutil_which('systemctl'):
-        sudo = hasattr(os, 'geteuid') and os.geteuid() != 0 and shutil_which('sudo')
         if _is_nginx_service_active():
             print(format_console('info', t('reloading_nginx_service')))
-            reload_cmd = ['systemctl', 'reload', NGINX_LINUX_SERVICE]
-            if sudo:
-                reload_cmd = ['sudo', *reload_cmd]
+            reload_cmd = [*sudo_prefix, 'systemctl', 'reload', NGINX_LINUX_SERVICE]
             subprocess.run(reload_cmd, check=False)
             print(format_console('ok', t('nginx_reloaded')))
             return 0
         print(format_console('info', t('reloading_nginx')))
-        start_cmd = ['systemctl', 'start', NGINX_LINUX_SERVICE]
-        if sudo:
-            start_cmd = ['sudo', *start_cmd]
+        start_cmd = [*sudo_prefix, 'systemctl', 'start', NGINX_LINUX_SERVICE]
         started = subprocess.run(start_cmd, check=False)
         if started.returncode == 0:
             print(format_console('ok', t('nginx_reloaded')))
@@ -156,7 +161,7 @@ def cmd_reload(root: Path) -> int:
 
     print(format_console('info', t('reloading_nginx')))
     subprocess.run(
-        [str(exe), '-s', 'reload', '-c', main_conf_arg],
+        [*sudo_prefix, str(exe), '-s', 'reload', '-c', main_conf_arg],
         cwd=str(nginx_dir),
         check=False,
     )

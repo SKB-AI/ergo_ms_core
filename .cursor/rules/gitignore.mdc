@@ -41,7 +41,7 @@ ERGO MS — **монорепозиторий-обёртка** (`ergo_ms`) с **g
 |------------------|-----------------|
 | Конфиг среды разработки | `databases.yaml`, `celery_workers.yaml`, `.env`, `.env.*`, `/env/*` (кроме `*.example`), `maintenance.flag` |
 | Общее Python-окружение проекта | `virtual_env/*` (с `.gitkeep`), `__pycache__/` |
-| Каталоги runtime проекта | `/logs/*`, `/media/*`, `/notebooks/*` |
+| Каталоги runtime проекта | `/logs/*`, `/media/*`, `/notebooks/*`, `/virtual_env/backups/*` |
 | npm workspace | `/virtual_env/npm/node_modules` (legacy: `/node_modules`) |
 | Deployment и Docker | `core/deployment/wrappers/*`, `core/deployment/docker/*.generated.*`, rendered nginx |
 | VS Code multi-terminal | списки через `ergo-sync` / `sync_vscode_logs_services.py --json` (без `*.runtime.yaml` в `.vscode/`) |

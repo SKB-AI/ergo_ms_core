@@ -155,6 +155,24 @@ await runWithConfirm(
 
 - Даты — `@/js/utils/timeUtils.js` (`time-utils.mdc`)
 
+## CSP и динамические стили
+
+При `API_CSP_MODE=no_unsafe*` браузер режет атрибут `style="..."` и Vue `:style`. Не добавляй `'unsafe-inline'` в заголовок.
+
+| Нужно | Как |
+|----|-----|
+| Дискретные значения (размер 20px, `grid-column: span 6`) | класс или `data-*` + правило в SCSS |
+| Непрерывные (координаты меню, `width: 37%`) | `v-csp-style="obj"` — пишет в adopted stylesheet (`cspInlineStyle.js`) |
+| Цвет SVG | атрибуты `stroke` / `fill`, не `:style` |
+
+```vue
+<!-- BAD — под style-src 'self' правило не применится -->
+<div :style="{ top: `${y}px`, left: `${x}px` }" />
+
+<!-- GOOD -->
+<div v-csp-style="{ top: `${y}px`, left: `${x}px` }" />
+```
+
 ## Импорты
 
 Из ядра — с `@/`:

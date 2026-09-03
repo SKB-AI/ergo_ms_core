@@ -481,6 +481,7 @@ function Clear-ProjectDependencies {
     }
     Write-ColorOutput ""
     Write-ErgomsMessage -Key 'clean_media_kept' -Color Green
+    Write-ErgomsMessage -Key 'clean_backups_kept' -Color Green
     Write-ColorOutput ""
 
     Write-ErgomsMessage -Key 'clean_confirm' -Color White; $confirmation = Read-Host

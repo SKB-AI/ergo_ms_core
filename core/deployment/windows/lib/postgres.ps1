@@ -178,6 +178,18 @@ function Invoke-PostgresPythonScript {
     return ($LASTEXITCODE -eq 0)
 }
 
+function Sync-PostgresBackupSchedule {
+    param(
+        [string]$Root,
+        [switch]$Uninstall
+    )
+    $extra = @('--root', $Root)
+    if ($Uninstall) {
+        $extra += '--uninstall'
+    }
+    Invoke-PostgresPythonScript -Root $Root -ScriptName 'install_postgres_backup_schedule.py' -ExtraArgs $extra | Out-Null
+}
+
 function Test-SystemPostgresqlService {
     param([string]$Root)
     return Invoke-PostgresPythonScript -Root $Root -ScriptName 'install_postgres.py' -ExtraArgs @(
@@ -430,10 +442,12 @@ function Install-PostgresService {
         Grant-PostgresServiceDirectoryAccess -PgDir $pgDir -NssmDir (Split-Path -Parent $nssmExe) -LogsDir (Get-ProjectLogsDir -ProjectRoot $Root)
         if ($existingService.Status -eq 'Running') {
             Write-ErgomsMessage -Key 'pg_service_already_configured_running' -Color Gray -Param @{ name = $script:PostgresServiceName }
+            Sync-PostgresBackupSchedule -Root $Root
             return
         }
         Write-ErgomsMessage -Key 'pg_service_configured_starting' -Color Cyan -Param @{ name = $script:PostgresServiceName }
         Start-PostgresServiceAndVerify -StderrLog $stderrLog -OkKey 'pg_ok_service_started'
+        Sync-PostgresBackupSchedule -Root $Root
         return
     }
 
@@ -486,6 +500,7 @@ function Install-PostgresService {
 
     Grant-PostgresServiceDirectoryAccess -PgDir $pgDir -NssmDir (Split-Path -Parent $nssmExe) -LogsDir (Get-ProjectLogsDir -ProjectRoot $Root)
     Start-PostgresServiceAndVerify -StderrLog $stderrLog -OkKey 'pg_ok_service_installed_running'
+    Sync-PostgresBackupSchedule -Root $Root
 }
 
 function Stop-PostgresProcess {
@@ -760,6 +775,7 @@ function Uninstall-Postgres {
         & $nssmExe remove $script:PostgresServiceName confirm 2>$null
         Write-ErgomsMessage -Key 'pg_ok_service_removed' -Color Green
     }
+    Sync-PostgresBackupSchedule -Root $Root -Uninstall
 
     $pgDir = Get-PostgresDir -Root $Root
     if ($PurgeData -and (Test-Path $pgDir)) {

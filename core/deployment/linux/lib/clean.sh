@@ -325,6 +325,7 @@ clear_project_dependencies() {
   done
   echo ""
   write_ergoms_message clean_media_kept green
+  write_ergoms_message clean_backups_kept green
   echo ""
 
   write_ergoms_message clean_confirm white; read -r confirmation

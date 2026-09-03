@@ -14,11 +14,15 @@ from lifecycle.host.ops import (  # noqa: E402
     venv_python_exe,
 )
 from project_layout import (  # noqa: E402
+    backups_dir,
     cache_tmp_dir,
+    client_cli_path_dirs,
     huggingface_snapshot_dir,
+    npm_bin_dir,
     npm_exe,
     npm_root_dir,
     portable_python_exe,
+    prepend_client_cli_path,
     tool_cache_environ,
     virtual_env_dir,
     wrappers_dir,
@@ -59,6 +63,7 @@ class HostOpsPathTests(unittest.TestCase):
                 npm_root_dir(root),
                 cache_tmp_dir(root),
                 wrappers_dir(root),
+                backups_dir(root),
                 portable_python_exe(root),
                 huggingface_snapshot_dir(root, '../escape/name'),
             )
@@ -81,6 +86,16 @@ class HostOpsPathTests(unittest.TestCase):
                 self.assertIn(key, env)
                 value = Path(env[key]).resolve()
                 self.assertTrue(str(value).startswith(str(cache)), msg=key)
+
+    def test_prepend_client_cli_path_includes_npm_bin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            npm_bin = npm_bin_dir(root)
+            npm_bin.mkdir(parents=True)
+            env = {'PATH': '/usr/bin'}
+            prepend_client_cli_path(env, root)
+            self.assertIn(str(npm_bin), env['PATH'].split(path_separator()))
+            self.assertEqual(client_cli_path_dirs(root), [npm_bin])
 
 
 if __name__ == '__main__':

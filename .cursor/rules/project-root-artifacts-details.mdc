@@ -33,6 +33,7 @@ alwaysApply: false
 | Jupyter | `virtual_env/jupyter/` |
 | Env + systemd units | `core/deployment/wrappers/`, `…/systemd/` |
 | clean trash | `.ergo_clean_trash_*` в корне (в `.gitignore`) |
+| Снимки SQL-баз | `virtual_env/backups/<метка>/` (`ergoms db-backup`; `ergoms clean` не трогает) |
 
 ## Обязательно
 

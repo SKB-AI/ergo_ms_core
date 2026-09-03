@@ -20,6 +20,7 @@ from console_tags import format_console  # noqa: E402
 from project_layout import (  # noqa: E402
     client_remotes_dir,
     nodejs_bin_dir,
+    npm_bin_dir,
     npm_exe,
     npm_node_modules_dir,
     npm_root_dir,
@@ -179,7 +180,7 @@ def run_npm(ctx: DeploymentContext, script: str, extra_args: Sequence[str] = ())
     cmd = [npm, 'run', script, *extra_args]
     env = os.environ.copy()
     env.update(tool_cache_environ(ctx.project_root))
-    _prepend_path(env, nodejs_bin_dir(ctx.project_root))
+    _prepend_path(env, nodejs_bin_dir(ctx.project_root), npm_bin_dir(ctx.project_root))
     return subprocess.call(cmd, cwd=str(npm_root), env=env)
 
 

@@ -24,10 +24,10 @@ from lifecycle.client_build_plan import (  # noqa: E402
     should_reload_nginx_after_client_build,
 )
 from project_layout import (  # noqa: E402
-    nodejs_bin_dir,
     nodejs_exe,
     npm_exe,
     npm_root_dir,
+    prepend_client_cli_path,
     tool_cache_environ,
 )
 
@@ -46,10 +46,7 @@ def _merged_env(project_root: Path) -> dict[str, str]:
 def _process_env(project_root: Path) -> dict[str, str]:
     env = os.environ.copy()
     env.update(tool_cache_environ(project_root))
-    node_bin = nodejs_bin_dir(project_root)
-    if node_bin.is_dir():
-        sep = ';' if os.name == 'nt' else ':'
-        env['PATH'] = f'{node_bin}{sep}{env.get("PATH", "")}'
+    prepend_client_cli_path(env, project_root)
     return env
 
 

@@ -17,7 +17,7 @@ if str(DEPLOYMENT_DIR) not in sys.path:
     sys.path.insert(0, str(DEPLOYMENT_DIR))
 
 from log_env import client_dev_log_level  # noqa: E402
-from project_layout import nodejs_bin_dir, npm_exe, npm_root_dir  # noqa: E402
+from project_layout import npm_exe, npm_root_dir, prepend_client_cli_path  # noqa: E402
 
 
 def run_vite_dev() -> int:
@@ -28,16 +28,7 @@ def run_vite_dev() -> int:
 
     npm_root = npm_root_dir(PROJECT_ROOT)
     env = os.environ.copy()
-    node_bin = nodejs_bin_dir(PROJECT_ROOT)
-    npm_bin_modules = npm_root / 'node_modules' / '.bin'
-    sep = ';' if os.name == 'nt' else ':'
-    path_parts = []
-    if node_bin.is_dir():
-        path_parts.append(str(node_bin))
-    if npm_bin_modules.is_dir():
-        path_parts.append(str(npm_bin_modules))
-    if path_parts:
-        env['PATH'] = sep.join(path_parts + [env.get('PATH', '')])
+    prepend_client_cli_path(env, PROJECT_ROOT)
 
     log_level = client_dev_log_level()
     return subprocess.call(

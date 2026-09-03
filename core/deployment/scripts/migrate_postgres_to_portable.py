@@ -29,6 +29,7 @@ from postgres_common import (  # noqa: E402
     _parse_simple_yaml_section,
     effective_portable_port,
     is_installed,
+    iter_database_section_names,
     load_db_defaults,
     ping_postgres,
     postgres_bin,
@@ -65,26 +66,6 @@ def _pg_env(user: str, password: str, host: str) -> dict[str, str]:
     }
 
 
-def _iter_database_section_names(text: str) -> list[str]:
-    names: list[str] = []
-    in_databases = False
-    for raw in text.splitlines():
-        if not raw.strip() or raw.lstrip().startswith('#'):
-            continue
-        indent = len(raw) - len(raw.lstrip(' '))
-        stripped = raw.strip()
-        if stripped == 'databases:':
-            in_databases = True
-            continue
-        if not in_databases:
-            continue
-        if indent == 2 and stripped.endswith(':'):
-            names.append(stripped[:-1].strip())
-        elif indent < 2 and stripped.endswith(':'):
-            break
-    return names
-
-
 def load_postgresql_sections(root: Path) -> list[dict[str, str]]:
     """Секции databases.yaml с engine=postgresql (default — postgresql, если engine не задан)."""
     path = root / 'databases.yaml'
@@ -101,7 +82,7 @@ def load_postgresql_sections(root: Path) -> list[dict[str, str]]:
 
     text = path.read_text(encoding='utf-8')
     sections: list[dict[str, str]] = []
-    for section_name in _iter_database_section_names(text):
+    for section_name in iter_database_section_names(text):
         section = _parse_simple_yaml_section(text, section_name)
         engine = (section.get('engine') or '').strip().lower()
         if section_name == 'default' and not engine:

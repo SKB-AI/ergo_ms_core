@@ -60,6 +60,25 @@ _postgres_data() {
   echo "$(_postgres_dir "$root")/data"
 }
 
+_postgres_apply_backup_schedule() {
+  local root="$1"
+  local uninstall="${2:-false}"
+  local py
+  py="$(_postgres_python "$root")"
+  if [[ -z "$py" || ! -x "$py" ]]; then
+    return 0
+  fi
+  local script="$root/core/deployment/scripts/install_postgres_backup_schedule.py"
+  if [[ ! -f "$script" ]]; then
+    return 0
+  fi
+  if [[ "$uninstall" == "true" ]]; then
+    "$py" -u "$script" --root "$root" --uninstall || true
+  else
+    "$py" -u "$script" --root "$root" || true
+  fi
+}
+
 _postgres_python() {
   local root="$1"
   local py="$root/virtual_env/python/bin/python"
@@ -347,6 +366,7 @@ postgres_install_service() {
   install_unit "$POSTGRES_SERVICE_NAME" "$content" "$root"
   enable_and_start "$POSTGRES_SERVICE_NAME.service"
   write_ergoms_message ok_systemd_service_installed_running green "" "name=PostgreSQL"
+  _postgres_apply_backup_schedule "$root"
 }
 
 postgres_start() {
@@ -524,6 +544,7 @@ postgres_uninstall() {
     fi
     write_ergoms_message pg_ok_service_removed green
   fi
+  _postgres_apply_backup_schedule "$root" true
 
   local dir
   dir="$(_postgres_dir "$root")"

@@ -92,13 +92,15 @@ ergoms docker-gen-modules
 ergoms db-makemigrations
 ergoms db-migrate
 ergoms migrate-all
+ergoms db-backup
+ergoms db-restore --latest
 ergoms collectstatic
 ergoms client-build
 ergoms client-check
 ergoms build-all
 ```
 
-Первые три команды создают и применяют миграции; `client-build` собирает то, что отдаёт этот хост (оболочку `core/client/dist` и/или federated remotes) и при `ERGO_PROXY=nginx` пересобирает сайт-конфиг nginx и делает reload; `client-check` — полный прогон lint/i18n/build/a11y с логами в `logs/client-check/`; `build-all` собирает клиент и статику Django.
+Первые три команды создают и применяют миграции. `db-backup` пишет снимок всех SQL-секций из `databases.yaml` в `virtual_env/backups/<метка>/` (portable Postgres, системный Postgres, SQLite, Docker; MySQL и MSSQL — если утилиты есть в PATH). Сколько снимков хранить и как часто делать автоснимок задаётся в `env/postgres.env`: `POSTGRES_BACKUP_KEEP` и `POSTGRES_BACKUP_SCHEDULE` (`off`, `true` = каждый день в 03:00, `HH:MM`, `every 6h`, `weekly sun 03:00`). После смены расписания выполните `ergoms install-postgres-backup-schedule` (то же делают `install-postgres` и `install-services`). Одна секция: `ergoms db-backup --database=default`. Восстановление: `ergoms db-restore --latest` или `ergoms db-restore --from=virtual_env/backups/<метка>`; без `--yes` команда спрашивает подтверждение. `client-build` собирает то, что отдаёт этот хост (оболочку `core/client/dist` и/или federated remotes) и при `ERGO_PROXY=nginx` пересобирает сайт-конфиг nginx и делает reload; `client-check` — полный прогон lint/i18n/build/a11y с логами в `logs/client-check/`; `build-all` собирает клиент и статику Django.
 
 ## Зависимости и первичная настройка {#зависимости-и-первичная-настройка}
 
@@ -267,7 +269,7 @@ ergoms stop-redis
 
 В `.env`: `ERGO_BROKER=redis`, перезапустите API. Служба: `ergoms install-redis-service`.
 
-При `ERGO_DB=portable_postgres` `setup-full` ставит кластер и OS-службу `ergo_ms_postgres`. Ту же службу регистрирует `ergoms install-services`. Отдельно: `ergoms install-postgres-service`.
+При `ERGO_DB=portable_postgres` `setup-full` ставит кластер и OS-службу `ergo_ms_postgres`. Ту же службу регистрирует `ergoms install-services`. Отдельно: `ergoms install-postgres-service`. Лимит и период автоснимка — `POSTGRES_BACKUP_KEEP` и `POSTGRES_BACKUP_SCHEDULE` в [`env/postgres.env.example`](../env/postgres.env.example).
 
 ## Meilisearch (поиск BM25) {#meilisearch}
 

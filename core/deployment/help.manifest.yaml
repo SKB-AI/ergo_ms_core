@@ -159,6 +159,15 @@ sections:
     summary: Обновить Python-зависимости ядра и модулей (poetry update)
   - name: db-migrate
     summary: Применить миграции
+  - name: db-backup
+    invoke: ergoms db-backup [--database=alias]
+    summary: Снимок SQL-баз из databases.yaml в virtual_env/backups/
+  - name: db-restore
+    invoke: ergoms db-restore --latest [--yes] | ergoms db-restore --from=virtual_env/backups/<метка> [--yes]
+    summary: Восстановить SQL-базы из снимка в virtual_env/backups/
+  - name: install-postgres-backup-schedule
+    invoke: ergoms install-postgres-backup-schedule [--uninstall]
+    summary: Поставить или снять автоснимок по POSTGRES_BACKUP_SCHEDULE
   - name: db-migrate-module
     invoke: ergoms db-migrate-module --module=<name> [--database=alias] [--grant-role=role] [--all]
     summary: Создать схему m_<name> и применить миграции приложений модуля

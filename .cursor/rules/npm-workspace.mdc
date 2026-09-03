@@ -79,7 +79,7 @@ Docker volume → /app/virtual_env/npm/node_modules
 
 ## Vite и запуск клиента
 
-[`start_client_if_dev.py`](../../core/deployment/scripts/start_client_if_dev.py) / `start_client_if_enabled.py` запускают Vite через `npm run … -w @ergo-ms/core-client` с `cwd=virtual_env/npm` и PATH к `node_modules/.bin`.
+[`start_client_if_dev.py`](../../core/deployment/scripts/start_client_if_dev.py) / `start_client_if_enabled.py` и [`client_build.py`](../../core/deployment/scripts/client_build.py) запускают Vite через `npm run … -w @ergo-ms/core-client` с `cwd=virtual_env/npm`. В `PATH` обязательно должен быть `virtual_env/npm/node_modules/.bin`: workspace лежит не в предке `core/client`, поэтому npm сам не находит `vite`.
 
 При правках [`vite.config.js`](../../core/client/vite.config.js) сохраняй резолв из `virtual_env/npm/node_modules` и доступ `server.fs.allow` к npm-root.
 

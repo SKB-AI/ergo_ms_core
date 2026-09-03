@@ -13,7 +13,7 @@ alwaysApply: true
 
 - Кэши, пакеты, TLS, Jupyter, temp — `virtual_env/`
 - Env и unit-файлы — `core/deployment/wrappers/`
-- Логи — `logs/`; CLI — `core/deployment/bin/`
+- Логи — `logs/`; снимки БД — `virtual_env/backups/`; CLI — `core/deployment/bin/`
 - Новый путь — сначала в `project_layout.py`, потом запись
 - **Запрещено:** `%TEMP%` / `/tmp`, `%ProgramData%`, `/etc` (кроме symlink служб), apt/dnf-certbot для данных приложения
 

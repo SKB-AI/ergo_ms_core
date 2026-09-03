@@ -210,6 +210,34 @@ def nodejs_bin_dir(root: Path) -> Path:
     return base / 'bin'
 
 
+def npm_bin_dir(root: Path) -> Path:
+    """CLI workspace (vite и т.п.): virtual_env/npm/node_modules/.bin."""
+    return npm_node_modules_dir(root) / '.bin'
+
+
+def client_cli_path_dirs(root: Path) -> list[Path]:
+    """Каталоги PATH для npm/vite. Workspace не предок core/client — walk-up npm их не найдёт."""
+    dirs: list[Path] = []
+    node_bin = nodejs_bin_dir(root)
+    if node_bin.is_dir():
+        dirs.append(node_bin)
+    npm_bin = npm_bin_dir(root)
+    if npm_bin.is_dir():
+        dirs.append(npm_bin)
+    return dirs
+
+
+def prepend_client_cli_path(env: dict[str, str], root: Path) -> dict[str, str]:
+    dirs = client_cli_path_dirs(root)
+    if not dirs:
+        return env
+    sep = ';' if sys.platform == 'win32' else ':'
+    existing = env.get('PATH', '')
+    prefix = sep.join(str(path) for path in dirs)
+    env['PATH'] = f'{prefix}{sep}{existing}' if existing else prefix
+    return env
+
+
 def client_remotes_dir(root: Path) -> Path:
     """Собранные federated remotes: virtual_env/client-remotes/<name>/remoteEntry.js."""
     return virtual_env_dir(root) / 'client-remotes'
@@ -243,6 +271,11 @@ def meilisearch_runtime_dir(root: Path) -> Path:
 def meilisearch_data_dir(root: Path) -> Path:
     """Индексы Meilisearch (LMDB) в cache."""
     return meilisearch_runtime_dir(root) / 'data.ms'
+
+
+def backups_dir(root: Path) -> Path:
+    """Снимки SQL-баз: virtual_env/backups/<метка>/."""
+    return virtual_env_dir(root) / 'backups'
 
 
 def wrappers_dir(root: Path) -> Path:

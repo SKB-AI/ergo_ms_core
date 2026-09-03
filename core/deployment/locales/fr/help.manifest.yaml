@@ -158,6 +158,15 @@ sections:
     summary: Mettre à jour les dépendances Python du noyau et des modules (poetry update)
   - name: db-migrate
     summary: Appliquer les migrations
+  - name: db-backup
+    invoke: ergoms db-backup [--database=alias]
+    summary: Instantané des bases SQL de databases.yaml dans virtual_env/backups/
+  - name: db-restore
+    invoke: ergoms db-restore --latest [--yes] | ergoms db-restore --from=virtual_env/backups/<stamp> [--yes]
+    summary: Restaurer les bases SQL depuis un instantané dans virtual_env/backups/
+  - name: install-postgres-backup-schedule
+    invoke: ergoms install-postgres-backup-schedule [--uninstall]
+    summary: Installer ou retirer l'instantané selon POSTGRES_BACKUP_SCHEDULE
   - name: db-migrate-module
     invoke: ergoms db-migrate-module --module=<name> [--database=alias] [--grant-role=role] [--all]
     summary: Créer le schéma m_<name> et migrer les applications du module

@@ -24,7 +24,7 @@ alwaysApply: false
 - Канонический формат имени — **Lucide PascalCase**: `CircleUserRound`, `Shield`, `MessageSquareText`, `Bot`
 - Общие смыслы ядра (профиль, колокольчик, настройки…) — константы **`CORE_ICON`** в [`coreIconNames.js`](../../core/client/src/config/coreIconNames.js); не подбирай «похожий» глиф (`User` вместо `CircleUserRound`)
 - Рендер в шаблоне — **`LucideIcon`** (`@/components/LucideIcon.vue`); обводка — `LUCIDE_STROKE_WIDTH` (не задавай свой `stroke-width` без причины)
-- SVG Lucide — квадрат: не ставь глобально `svg.lucide { display: block }` без фиксированной ширины. `display: block` растягивает глиф на 100% родителя (плоский колокол в пустом inbox, сплющенные иконки меню). Эталон: `inline-block` + `vertical-align: middle` + `aspect-ratio: 1` в `_globals.scss`; хост `LucideIcon` задаёт width/height.
+- SVG Lucide — квадрат: не ставь глобально `svg.lucide { display: block }` без фиксированной ширины. `display: block` растягивает глиф на 100% родителя (плоский колокол в пустом inbox, сплющенные иконки меню). Эталон: `inline-block` + `vertical-align: middle` + `aspect-ratio: 1` в `_globals.scss`; хост `LucideIcon` задаёт размер через `data-icon-size` и CSS, не через `:style` (CSP `style-src 'self'`).
 - Загрузка / preload — `lucideIconLoader.js` / `IconManager` (`normalizeLucideIconName`, `getLucideIconAsync`, `preloadLucideIconNames`)
 - Миграции меню API — `icon='LayoutGrid'` (строка); клиент не превращает имя в Vue-компонент до рендера
 - Bridge (`apps.menu.items`, `header.userMenu.items`) — поле `icon: 'Bot'`, не `markRaw(Bot)`

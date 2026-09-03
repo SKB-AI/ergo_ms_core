@@ -411,6 +411,27 @@ def has_system_postgresql_service() -> bool:
     return False
 
 
+def iter_database_section_names(text: str) -> list[str]:
+    """Имена секций верхнего уровня в databases.yaml."""
+    names: list[str] = []
+    in_databases = False
+    for raw in text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith('#'):
+            continue
+        indent = len(raw) - len(raw.lstrip(' '))
+        stripped = raw.strip()
+        if stripped == 'databases:':
+            in_databases = True
+            continue
+        if not in_databases:
+            continue
+        if indent == 2 and stripped.endswith(':'):
+            names.append(stripped[:-1].strip())
+        elif indent < 2 and stripped.endswith(':'):
+            break
+    return names
+
+
 def _parse_simple_yaml_section(text: str, section: str) -> dict[str, str]:
     """Минимальный разбор секции databases.yaml без PyYAML."""
     lines = text.splitlines()
