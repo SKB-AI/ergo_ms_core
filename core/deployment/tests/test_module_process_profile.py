@@ -58,6 +58,34 @@ class ModuleProcessProfileTests(unittest.TestCase):
         env = {'ERGO_PROCESS_ROLE': 'api', 'MODULE_PROCESS_PROFILE': 'slim'}
         self.assertFalse(is_slim_module_process(env))
 
+    def test_modules_host_defaults_to_slim(self) -> None:
+        env = {'ERGO_PROCESS_ROLE': 'module:demo', 'HOST_PROFILE': 'modules'}
+        self.assertTrue(is_slim_module_process(env))
+
+    def test_explicit_full_wins_on_modules_host(self) -> None:
+        env = {
+            'ERGO_PROCESS_ROLE': 'module:demo',
+            'HOST_PROFILE': 'modules',
+            'MODULE_PROCESS_PROFILE': 'full',
+        }
+        self.assertFalse(is_slim_module_process(env))
+
+    def test_api_role_not_slim_on_modules_host(self) -> None:
+        env = {'ERGO_PROCESS_ROLE': 'api', 'HOST_PROFILE': 'modules'}
+        self.assertFalse(is_slim_module_process(env))
+
+    def test_module_role_stays_full_without_host_profile(self) -> None:
+        env = {'ERGO_PROCESS_ROLE': 'module:demo'}
+        self.assertFalse(is_slim_module_process(env))
+
+    def test_host_services_api_keeps_full_default(self) -> None:
+        env = {
+            'ERGO_PROCESS_ROLE': 'module:demo',
+            'HOST_PROFILE': 'modules',
+            'HOST_SERVICES': 'api',
+        }
+        self.assertFalse(is_slim_module_process(env))
+
     def test_platform_minimum(self) -> None:
         self.assertIn('src.core.integrations', PLATFORM_CORE_APPS)
         self.assertIn('src.core.cms.adp', PLATFORM_CORE_APPS)

@@ -16,7 +16,7 @@ Nginx раздаёт **`core/client/dist`**, а не Vite. Правка Vue бе
 
 ## Кратко
 
-- После правок клиента за `ERGO_PROXY=nginx` / `ergoms start-nginx-dev` сначала **`ergoms client-build`**, затем жёсткое обновление страницы (Ctrl+F5). `reload-nginx` нужен, когда менялся **шаблон nginx**, а не hashed-файлы в `dist`.
+- После правок клиента за `ERGO_PROXY=nginx` / `ergoms start-nginx-dev` сначала **`ergoms client-build`**, затем жёсткое обновление страницы (Ctrl+F5). При nginx команда сама пересобирает сайт-конфиг и делает reload. Отдельный `reload-nginx` — если меняли **только** шаблон nginx или `env/nginx.env`.
 - Пустая консоль **не** значит, что JS не работает. Смотри **`logs/nginx-access.log`**: какие hashed-чанки и `/api/` реально запрошены.
 - Форма входа не откроется, если в таблице Vue Router нет маршрута с `name: 'Login'` и `path: '/login'`. Редирект `{ name: 'Login' }` тогда не резолвится, `router.isReady()` не завершается, маска снимается по таймауту.
 - `POST /api/cms/client-log/` требует JWT. Гость ничего не пишет в `logs/client-browser.log`.

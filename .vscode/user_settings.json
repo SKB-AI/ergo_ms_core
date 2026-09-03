@@ -1,6 +1,5 @@
 {
     "workbench.browser.openLocalhostLinks": false,
-    "workbench.externalBrowser": "default",
     "remote.autoForwardPorts": false,
     "remote.restoreForwardedPorts": false,
     "remote.otherPortsAttributes": {

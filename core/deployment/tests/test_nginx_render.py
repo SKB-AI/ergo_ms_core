@@ -128,11 +128,14 @@ class NginxRenderTests(unittest.TestCase):
         local = render_spa_locations_host({})
         self.assertIn('try_files $uri $uri/ /index.html;', local)
         self.assertNotIn('proxy_pass http://ergo_client', local)
+        self.assertIn('location ^~ /shared/', local)
+        self.assertIn('add_header Cache-Control "no-store" always;', local)
         remote = render_spa_locations_host({
             'NGINX_CLIENT_UPSTREAM': '10.0.0.8:80',
         })
         self.assertIn('proxy_pass http://ergo_client;', remote)
         self.assertIn('proxy_set_header Host 10.0.0.8;', remote)
+        self.assertIn('location ^~ /shared/', remote)
         self.assertNotIn('try_files $uri $uri/ /index.html;', remote)
 
         deployment_dir = Path(__file__).resolve().parents[1]

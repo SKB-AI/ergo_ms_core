@@ -40,6 +40,13 @@ server {
         try_files $uri =404;
     }
 
+    # Federation import map (/shared/*.js) без хеша — не кэшировать между сборками.
+    location ^~ /shared/ {
+        add_header Cache-Control "no-store" always;
+        ${ERGO_DOCKER_SECURITY_HEADERS}
+        try_files $uri =404;
+    }
+
     location = /client-build.json {
         add_header Cache-Control "no-store" always;
         ${ERGO_DOCKER_SECURITY_HEADERS}

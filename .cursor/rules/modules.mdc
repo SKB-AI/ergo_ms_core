@@ -41,7 +41,8 @@ modules/<имя>/
 │   ├── integrations.py      # операции для моста (если нужны)
 │   ├── bridge_manifest.yaml # ops/groups при MODULE_RUNTIME=microservice
 │   ├── schema.yaml          # схема PostgreSQL m_<name>, isolated
-│   └── search_indexes.py    # индексы поиска (uid с префиксом модуля)
+│   ├── search_indexes.py    # индексы поиска (uid с префиксом модуля)
+│   └── user_guides/         # шпаргалки пакета knowledge/ (необязательно)
 ├── client/
 │   ├── js/
 │   │   ├── routes.js        # страницы (если есть UI)
@@ -172,7 +173,7 @@ class MyModuleConfig(AppConfig):
 
 Пункты выпадающего меню пользователя в шапке (`UserMenu`) — через `bridge.provideMany` в группе `header.userMenu.items`. Эталон: `modules/<name>/client/js/headerUserMenu.js`, подключается из `integrations.js`. Сбор в ядре — [`headerUserMenu.js`](../../core/client/src/integrations/headerUserMenu.js). Это **не** боковое меню: sidebar — миграции API, шапка — ModuleBridge. Иконка — строка Lucide PascalCase (`icon: 'Building2'`), не Vue-компонент — [`icons.mdc`](icons.mdc).
 
-Пункты меню приложений (`AppsMenu` в toolbar) — через `bridge.provideMany` в группе `apps.menu.items`. Эталон: `modules/<name>/client/js/appsMenu.js`, подключается из `integrations.js`. Имя группы берите из `@/integrations/moduleContracts.js`, не из `appsMenu.js`: иначе remote тянет сборщик оболочки. Сбор в ядре — [`appsMenu.js`](../../core/client/src/integrations/appsMenu.js). Кнопка скрыта без пунктов; не ставьте `isVisible` ради права модуля. Иконка — строка (`icon: 'Bot'`), рендер в ядре через `LucideIcon`.
+Пункты меню приложений (`AppsMenu` в toolbar) — через `bridge.provideMany` в группе `apps.menu.items`. Эталон: `modules/<name>/client/js/appsMenu.js`, подключается из `integrations.js`. Имя группы берите из `@/integrations/moduleContracts.js`, не из `appsMenu.js`: иначе remote тянет сборщик оболочки. Сбор в ядре — [`appsMenu.js`](../../core/client/src/integrations/appsMenu.js). Кнопка скрыта без пунктов. Для UX-ограничения укажите `permissionModule` + `permission` (глобальный админ видит через `hasModulePermission`); `isVisible` — только если одной пары прав мало. Иконка — строка (`icon: 'Bot'`), рендер в ядре через `LucideIcon`.
 
 Бренд в шапке сайдбара / mobile header — опционально через `shell.sidebar_brand` ([`sidebarBrand.js`](../../core/client/src/integrations/sidebarBrand.js)): модуль регистрирует `{ id, component, match?, to?, measureText? }`; без match ядро оставляет `SiteWordmark`.
 

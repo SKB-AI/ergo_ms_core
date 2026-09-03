@@ -3,38 +3,30 @@
 
 MEDIA_UPLOAD_MAX_SIZE — дефолт (если модуль не запросил больше).
 MEDIA_UPLOAD_HARD_MAX_SIZE — абсолютный потолок (модули могут быть выше дефолта).
-Direct-upload (tasks и др.) + module ceilings → client_max_body_size с запасом.
+Ключи модулей ядро не перечисляет: берёт из env по шаблону
+``*_MAX_ATTACHMENT_SIZE_MB`` и ``CLIENT_*_UPLOAD_MAX_SIZE_MB``.
+Для CLIENT_* значение 0 значит «до hard».
 Stdlib, без Django.
 """
 
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Mapping
 
 DEFAULT_MEDIA_UPLOAD_BYTES = 524_288_000  # 500 MiB
 DEFAULT_HARD_MAX_BYTES = 5 * 1024 * 1024 * 1024  # 5 GiB
 DEFAULT_MARGIN_PERCENT = 10
-DEFAULT_TASKS_ATTACHMENT_MB = 600
 
-# Явный реестр direct-upload лимитов (значение в МБ → байты)
-DIRECT_UPLOAD_LIMIT_KEYS: tuple[tuple[str, int], ...] = (
-    ('TASKS_MAX_ATTACHMENT_SIZE_MB', DEFAULT_TASKS_ATTACHMENT_MB),
-)
+ATTACHMENT_LIMIT_KEY_RE = re.compile(r'^[A-Z][A-Z0-9_]*_MAX_ATTACHMENT_SIZE_MB$')
+CLIENT_UPLOAD_LIMIT_KEY_RE = re.compile(r'^CLIENT_[A-Z][A-Z0-9_]*_UPLOAD_MAX_SIZE_MB$')
 
 # Известные feature-лимиты клиента ядра (для отчёта check; байты)
 KNOWN_FEATURE_LIMITS_BYTES: dict[str, int] = {
     'avatar': 5 * 1024 * 1024,
     'messengerAttachment': 25 * 1024 * 1024,
 }
-
-# Env media-лимиты (МБ). Имена модулей не хардкодим — только CLIENT_* ключи из .env.
-# zero_means_hard: 0 / пусто при default 0 → MEDIA_UPLOAD_HARD_MAX_SIZE
-# (env_key, default_mb, zero_means_hard)
-MODULE_MEDIA_LIMIT_KEYS: tuple[tuple[str, int, bool], ...] = (
-    ('CLIENT_BI_UPLOAD_MAX_SIZE_MB', 200, False),
-    ('CLIENT_VIDEO_UPLOAD_MAX_SIZE_MB', 0, True),
-)
 
 
 def _env_str(env: Mapping[str, str], key: str, default: str = '') -> str:
@@ -79,11 +71,19 @@ def parse_margin_percent(env: Mapping[str, str]) -> int:
     )
 
 
+def iter_attachment_limit_keys(env: Mapping[str, str]) -> list[str]:
+    return sorted(key for key in env if ATTACHMENT_LIMIT_KEY_RE.fullmatch(key))
+
+
+def iter_client_upload_limit_keys(env: Mapping[str, str]) -> list[str]:
+    return sorted(key for key in env if CLIENT_UPLOAD_LIMIT_KEY_RE.fullmatch(key))
+
+
 def parse_direct_upload_bytes(env: Mapping[str, str]) -> int:
-    """Максимум среди зарегистрированных direct-upload лимитов (байты)."""
+    """Максимум среди ``*_MAX_ATTACHMENT_SIZE_MB`` из env (байты)."""
     max_bytes = 0
-    for key, default_mb in DIRECT_UPLOAD_LIMIT_KEYS:
-        mb = _parse_positive_int(_env_str(env, key), default_mb)
+    for key in iter_attachment_limit_keys(env):
+        mb = _parse_positive_int(_env_str(env, key), 0)
         max_bytes = max(max_bytes, mb * 1024 * 1024)
     return max_bytes
 
@@ -91,8 +91,8 @@ def parse_direct_upload_bytes(env: Mapping[str, str]) -> int:
 def list_direct_upload_limits(env: Mapping[str, str]) -> list[tuple[str, int]]:
     """Список (env_key, bytes) для отчёта."""
     result: list[tuple[str, int]] = []
-    for key, default_mb in DIRECT_UPLOAD_LIMIT_KEYS:
-        mb = _parse_positive_int(_env_str(env, key), default_mb)
+    for key in iter_attachment_limit_keys(env):
+        mb = _parse_positive_int(_env_str(env, key), 0)
         result.append((key, mb * 1024 * 1024))
     return result
 
@@ -130,11 +130,11 @@ def parse_module_ceiling_bytes(
 
 def parse_modules_max_bytes(env: Mapping[str, str]) -> int:
     max_bytes = 0
-    for key, default_mb, zero_means_hard in MODULE_MEDIA_LIMIT_KEYS:
+    for key in iter_client_upload_limit_keys(env):
         max_bytes = max(
             max_bytes,
             parse_module_ceiling_bytes(
-                env, key, default_mb, zero_means_hard=zero_means_hard,
+                env, key, 0, zero_means_hard=True,
             ),
         )
     return max_bytes
@@ -195,9 +195,9 @@ def build_upload_limits_report(env: Mapping[str, str]) -> dict[str, Any]:
     warnings: list[str] = []
     errors: list[str] = []
 
-    for key, default_mb, zero_means_hard in MODULE_MEDIA_LIMIT_KEYS:
+    for key in iter_client_upload_limit_keys(env):
         module_bytes = parse_module_ceiling_bytes(
-            env, key, default_mb, zero_means_hard=zero_means_hard,
+            env, key, 0, zero_means_hard=True,
         )
         ok = module_bytes <= hard_bytes
         above_default = module_bytes > media_bytes

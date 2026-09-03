@@ -43,10 +43,21 @@ def module_name_from_role(environ: Mapping[str, str] | None = None) -> str | Non
     return name or None
 
 
+def _host_defaults_to_slim(environ: Mapping[str, str]) -> bool:
+    """Хост без службы api (типичный HOST_PROFILE=modules) — slim по умолчанию."""
+    from lifecycle.host_profile import SERVICE_API, resolve_host_profile
+
+    return not resolve_host_profile(environ).wants(SERVICE_API)
+
+
 def process_profile_name(environ: Mapping[str, str] | None = None) -> str:
     env = environ if environ is not None else os.environ
-    raw = (env.get('MODULE_PROCESS_PROFILE') or PROFILE_FULL).strip().lower()
+    raw = (env.get('MODULE_PROCESS_PROFILE') or '').strip().lower()
     if raw == PROFILE_SLIM:
+        return PROFILE_SLIM
+    if raw == PROFILE_FULL:
+        return PROFILE_FULL
+    if module_name_from_role(env) is not None and _host_defaults_to_slim(env):
         return PROFILE_SLIM
     return PROFILE_FULL
 

@@ -31,8 +31,8 @@ alwaysApply: false
 | Нужно | Как |
 |-------|-----|
 | Вынести процесс | `bridge_manifest.yaml`, `MICROSERVICE_MODULES=<name>`, `ergoms start-module --module=<name>` |
-| Хост только модулей | `HOST_PROFILE=modules` (или `auto` при `NGINX_API_UPSTREAM` + `BRIDGE_CORE_URL`), затем `ergoms install-services` (API, worker и при наличии `celery_beat_config.py` — Beat модуля) |
-| Ужать Django модуля | `MODULE_PROCESS_PROFILE=slim`; extras — `MODULE_PROCESS_CORE_EXTRA` или `api/process_profile.yaml` |
+| Хост только модулей | `HOST_PROFILE=modules` (или `auto` при `NGINX_API_UPSTREAM` + `BRIDGE_CORE_URL` + `MICROSERVICE_MODULES`). `ergoms start-api`, оболочка Vite и общий Beat ядра отказываются. Остаются `start-module` / `start-worker --module` / `start-beat --module`. `install-services` ставит API, worker и при наличии `celery_beat_config.py` — Beat модуля |
+| Ужать Django модуля | На хосте без службы `api` процесс `module:<name>` сам берёт `slim`. Явный `MODULE_PROCESS_PROFILE=full` побеждает. Extras — `MODULE_PROCESS_CORE_EXTRA` или `api/process_profile.yaml` |
 | Изолировать данные | `api/schema.yaml`, снять FK наружу (`isolated: true`), `ergoms db-migrate-module` / `db-move-module-schema` / `db-move-core-schema` |
 | Удаление пользователя | подписка на `core.user_delete` по `user_public_id` / `user_id`, не ORM `user=` |
 | HTTP-мост | kwargs JSON-сериализуемые (`user_public_id`); объект `user=` локально оставляй; при отсутствии провайдера — `default` |

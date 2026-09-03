@@ -185,7 +185,7 @@ sections:
   title: Сборка
   commands:
   - name: client-build
-    summary: Собрать клиент (npm run build)
+    summary: Собрать клиент по роли хоста; при nginx пересобирает сайт-конфиг и делает reload
   - name: client-build-analyze
     summary: Собрать клиент с отчётом rollup-plugin-visualizer (dist/stats.html)
   - name: client-build-remote
@@ -432,6 +432,9 @@ sections:
   - name: search-reindex
     invoke: ergoms search-reindex [--index=core_users]
     summary: Переиндексация Meilisearch (все индексы или один)
+  - name: publish-knowledge-packs
+    invoke: ergoms publish-knowledge-packs
+    summary: Опубликовать пакеты справки этого процесса в media_api (knowledge/)
 - id: packages
   title: Portable-пакеты
   note: 'Реестр virtual_env/packages: ядро (core_packages.yaml) и модули (packages.yaml). Службы redis/nginx — отдельные команды

@@ -88,7 +88,6 @@
     // Cursor не открывает встроенный браузер на localhost-ссылки и обнаруженные порты.
     // Саму вкладку Browser Tab выключают install-extensions и ERGO MS User Config (state.vscdb).
     "workbench.browser.openLocalhostLinks": false,
-    "workbench.externalBrowser": "default",
     "remote.portsAttributes": {
         "*": { "onAutoForward": "ignore" },
         "80": { "onAutoForward": "ignore" },

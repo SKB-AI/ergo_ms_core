@@ -34,7 +34,7 @@ ViewSet + `MediaApiFileMixin`. Сериализатор принимает по�
 
 ```javascript
 import { mediaApiClient } from '@/js/api/media-api-client'
-const { path } = await mediaApiClient.upload(file, { targetDir: 'tasks/attachments' })
+const { path } = await mediaApiClient.upload(file, { targetDir: '<name>/attachments' })
 ```
 
 Класс квоты ставит ядро по `target_dir` (группа `media.upload_quota_policies`). Клиент **не** передаёт `quota`. Частота модуля — в `modules/<name>/.env`, не в `MEDIA_API_UPLOAD_RATE` / `_ADMIN`. Потолок токена и nginx `/upload/` — `MEDIA_API_UPLOAD_RATE_CEILING` (после смены: `ergoms reload-nginx`).
@@ -95,11 +95,14 @@ with get_scratch_store().session('job') as workdir:
 
 Детали (`MEDIA_API_*`, лимиты): [`env/media.env.example`](../../env/media.env.example).
 
+Пакеты справки для ассистента пишет процесс через `MediaClient` в `knowledge/<owner>/`. Браузерный upload-токен с `target_dir`, который начинается с `knowledge`, отвергается. На двух хостах сосед читает чужой пакет по `core.knowledge.sign_read` / `knowledge.sign_read.<name>`; адрес своего media_api для пира — `MEDIA_API_ADVERTISE_URL`.
+
 ## Запрещено
 
 - URL через `MEDIA_URL` или `/media/...` в основном API
 - `request.FILES` без поддержки `*_path` от media_api
 - Временные файлы внутри пользовательской папки media
+- Загрузка из браузера в каталог `knowledge/`
 
 ## Связанные правила
 

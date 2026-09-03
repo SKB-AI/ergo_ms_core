@@ -9,7 +9,7 @@
 - validate_module_isolation --scope=all (отчёт по modules/, без падения CI)
 - validate_bridge_contracts --fail-on-warning (схемы дескрипторов моста)
 - запрет hardcoded имён модулей во всём ядре и правилах Cursor
-  (весь core/, .cursor/rules/ — код, комментарии, docstring, markdown)
+  (весь core/, .cursor/rules/; имена — папки modules/ плюс MICROSERVICE_MODULES)
 - запрет console.error в прикладном коде клиента (кроме logError.js / logger.js)
 - запрет нативного <select> / b-form-select в .vue ядра
 - запрет from modules. в core/api/src (дополнительный текстовый grep)
@@ -139,7 +139,13 @@ HARDCODED_MODULE_LINE_ALLOWLIST = (
     re.compile(r'modules/\$\{'),
     re.compile(r'@/modules/'),
     re.compile(r'\.\./.*modules/\*'),
-    re.compile(r'modules\.'),
+    # Плейсхолдеры и префиксы пакета, не конкретный slug.
+    re.compile(r'modules\.<'),
+    re.compile(r"modules\.\*"),
+    re.compile(r"['\"]modules\.\*"),
+    re.compile(r'startswith\([\'\"]modules\.'),
+    re.compile(r"replace\(['\"]modules\."),
+    re.compile(r'f[\'\"]modules\.\{'),
     re.compile(r'module_source\s*='),
     re.compile(r'MODULE_SOURCE\s*='),
     # Служебные ключи YAML/JSON/рецептов, совпадающие с именами модулей workers/tasks
@@ -276,26 +282,63 @@ def _is_hardcoded_module_allowlisted(path: Path) -> bool:
 
 
 def _should_skip_hardcoded_module_path(rel: str) -> bool:
-    """Пропуск тестов и lock-файлов — не runtime/доки ядра."""
+    """Пропуск тестов, обёрток служб, миграций и lock-файлов — не runtime/доки ядра."""
     if rel.startswith('core/deployment/tests/') or '/lib/test/' in rel:
+        return True
+    if rel.startswith('core/deployment/wrappers/'):
+        return True
+    if '/migrations/' in rel:
         return True
     if rel.endswith(('.lock', 'package-lock.json', 'poetry.lock')):
         return True
     return False
 
 
+def _parse_module_name_csv(raw: str) -> list[str]:
+    names: list[str] = []
+    for part in (raw or '').split(','):
+        name = part.strip()
+        if re.fullmatch(r'[a-z][a-z0-9_]*', name):
+            names.append(name)
+    return names
+
+
+def _env_assignment_value(path: Path, key: str) -> str:
+    """Читает одно присваивание KEY= из файла env, без остальных строк."""
+    if not path.is_file():
+        return ''
+    prefix = f'{key}='
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except (OSError, UnicodeDecodeError):
+        return ''
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        if not stripped.startswith(prefix):
+            continue
+        return stripped[len(prefix):].strip().strip('"').strip("'")
+    return ''
+
+
 def load_installed_module_names() -> list[str]:
-    if not MODULES_DIR.is_dir():
-        return []
-    names = []
-    for entry in MODULES_DIR.iterdir():
-        if not entry.is_dir():
-            continue
-        if entry.name.startswith('.') or entry.name == '__pycache__':
-            continue
-        if not re.fullmatch(r'[a-z][a-z0-9_]*', entry.name):
-            continue
-        names.append(entry.name)
+    names: set[str] = set()
+    if MODULES_DIR.is_dir():
+        for entry in MODULES_DIR.iterdir():
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith('.') or entry.name == '__pycache__':
+                continue
+            if not re.fullmatch(r'[a-z][a-z0-9_]*', entry.name):
+                continue
+            names.add(entry.name)
+    names.update(_parse_module_name_csv(os.environ.get('MICROSERVICE_MODULES', '')))
+    names.update(
+        _parse_module_name_csv(
+            _env_assignment_value(PROJECT_ROOT / 'env' / 'modules.env', 'MICROSERVICE_MODULES')
+        )
+    )
     return sorted(names)
 
 

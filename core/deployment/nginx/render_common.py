@@ -195,6 +195,21 @@ def render_remotes_location_host(values: Mapping[str, str]) -> str:
     )
 
 
+def _render_shared_spa_location(*, proxy_block: str = '', local: bool = True) -> str:
+    """``/shared/`` — shim’ы import map без хеша в имени; иначе браузер держит старый ModuleBridge."""
+    lines = [
+        '    location ^~ /shared/ {\n',
+        '        add_header Cache-Control "no-store" always;\n',
+        '        include ${ERGO_NGINX_SNIPPETS}/security_headers.conf;\n',
+    ]
+    if local:
+        lines.append('        try_files $uri =404;\n')
+    else:
+        lines.append(proxy_block)
+    lines.append('    }\n\n')
+    return ''.join(lines)
+
+
 def render_spa_locations_host(values: Mapping[str, str]) -> str:
     """``/`` ``/assets/`` ``/index.html``: локальный dist или proxy на NGINX_CLIENT_UPSTREAM."""
     remotes = render_remotes_location_host(values)
@@ -208,7 +223,8 @@ def render_spa_locations_host(values: Mapping[str, str]) -> str:
             '        try_files $uri =404;\n'
             '    }\n'
             '\n'
-            '    location = /client-build.json {\n'
+            + _render_shared_spa_location(local=True)
+            + '    location = /client-build.json {\n'
             '        add_header Cache-Control "no-store" always;\n'
             '        include ${ERGO_NGINX_SNIPPETS}/security_headers.conf;\n'
             '        try_files $uri =404;\n'
@@ -249,7 +265,8 @@ def render_spa_locations_host(values: Mapping[str, str]) -> str:
         f'{proxy}'
         '    }\n'
         '\n'
-        '    location = /client-build.json {\n'
+        + _render_shared_spa_location(proxy_block=proxy, local=False)
+        + '    location = /client-build.json {\n'
         '        add_header Cache-Control "no-store" always;\n'
         '        include ${ERGO_NGINX_SNIPPETS}/security_headers.conf;\n'
         f'{proxy}'

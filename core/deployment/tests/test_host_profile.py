@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 import _bootstrap  # noqa: F401
 
+from lifecycle.host_process_guard import (  # noqa: E402
+    host_wants_service,
+    refuse_unwanted_core_service,
+)
 from lifecycle.host_profile import (  # noqa: E402
     DOCKER_PROFILE_API,
     DOCKER_PROFILE_BEAT,
@@ -13,6 +19,7 @@ from lifecycle.host_profile import (  # noqa: E402
     PROFILE_MODULES,
     SERVICE_API,
     SERVICE_BEAT,
+    SERVICE_CLIENT,
     SERVICE_MEDIA,
     SERVICE_MODULE_API,
     SERVICE_MODULE_BEAT,
@@ -112,6 +119,37 @@ class HostProfileTests(unittest.TestCase):
         })
         self.assertIn('ergo_st_hp_api_dev', profile.core_unit_names())
         self.assertNotIn('ergo_ms_api_dev', profile.core_unit_names())
+
+    def test_modules_host_does_not_want_core_api(self) -> None:
+        env = {'HOST_PROFILE': PROFILE_MODULES}
+        self.assertFalse(host_wants_service(SERVICE_API, environ=env))
+        self.assertFalse(host_wants_service(SERVICE_BEAT, environ=env))
+        self.assertFalse(host_wants_service(SERVICE_CLIENT, environ=env))
+
+    def test_refuse_core_api_when_host_skips_api(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / '.env').write_text('HOST_PROFILE=modules\n', encoding='utf-8')
+            code = refuse_unwanted_core_service(
+                SERVICE_API,
+                message_key='host_refuses_core_api',
+                project_root=root,
+            )
+            self.assertEqual(code, 1)
+
+    def test_host_services_api_allows_core_api(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / '.env').write_text(
+                'HOST_PROFILE=modules\nHOST_SERVICES=api\n',
+                encoding='utf-8',
+            )
+            code = refuse_unwanted_core_service(
+                SERVICE_API,
+                message_key='host_refuses_core_api',
+                project_root=root,
+            )
+            self.assertEqual(code, 0)
 
 
 if __name__ == '__main__':

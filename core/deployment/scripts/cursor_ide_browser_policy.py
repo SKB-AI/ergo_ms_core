@@ -28,8 +28,14 @@ from console_tags import format_console  # noqa: E402
 # Значения как пишет сам Cursor: строки "true" / "false".
 CURSOR_BROWSER_KEYS = {
     'cursor/autoOpenLocalhostUrls': 'false',
-    'cursor/glassOpenWebLinksInBrowser': 'false',
 }
+
+# Раньше сюда ошибочно писали false: это выключало открытие https-ссылок
+# в системном браузере (чат, агент, markdown). Ключ снимаем, чтобы Cursor
+# вернулся к своему значению по умолчанию.
+CURSOR_BROWSER_KEYS_DROP = (
+    'cursor/glassOpenWebLinksInBrowser',
+)
 
 
 def _configure_stdio_utf8() -> None:
@@ -97,6 +103,13 @@ def apply_browser_policy(db_path: Path) -> dict[str, object]:
                 'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
                 (key, value),
             )
+            changed.append(key)
+
+        for key in CURSOR_BROWSER_KEYS_DROP:
+            cur.execute('SELECT value FROM ItemTable WHERE key = ?', (key,))
+            if cur.fetchone() is None:
+                continue
+            cur.execute('DELETE FROM ItemTable WHERE key = ?', (key,))
             changed.append(key)
         con.commit()
     finally:

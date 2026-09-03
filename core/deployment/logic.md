@@ -146,7 +146,7 @@
 1. В корневом `.env`: `ERGO_PROXY=nginx`; детали — `env/nginx.env` из `env/nginx.env.example`.
 2. `ergoms install-nginx` (или `setup-full` при уже `ERGO_PROXY=nginx`; на Linux runner при необходимости запросит `sudo`).
 3. Проверка: `ergoms test-nginx`, `ergoms status-nginx`.
-4. После смены клиента: `ergoms client-build && ergoms reload-nginx`.
+4. После смены клиента: `ergoms client-build` (при `ERGO_PROXY=nginx` команда сама пересобирает сайт-конфиг и делает reload).
 
 Переменные: `ERGO_PROXY`, `NGINX_*` в `env/nginx.env`.
 

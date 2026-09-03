@@ -92,7 +92,7 @@ git submodule update --init --recursive
 
 Симптом: `http://<хост>` через `ergoms start-nginx-dev` крутит маску загрузки или показывает пустую оболочку, консоль браузера пустая. Через `ergoms start-client` (Vite) та же копия кода открывается.
 
-Nginx отдаёт **сборку** `core/client/dist`, а не сервер разработки Vite. После правок клиента выполните `ergoms client-build` и обновите страницу с очисткой кэша (Ctrl+F5). `reload-nginx` нужен, если менялся шаблон конфига nginx, а не hashed-файлы в `dist`.
+Nginx отдаёт **сборку** `core/client/dist`, а не сервер разработки Vite. После правок клиента выполните `ergoms client-build` и обычное обновление страницы (F5). При `ERGO_PROXY=nginx` эта команда пересобирает сайт-конфиг и делает reload. `index.html` и `/shared/*` отдаются с `Cache-Control: no-store`, а в import map у `/shared/*.js` есть `?v=<сборка>`, чтобы после деплоя браузер сам взял новый ModuleBridge, а не чистил «изображения и файлы». Отдельный `reload-nginx` нужен, если менялся шаблон конфига nginx или `env/nginx.env` без сборки клиента.
 
 Консоль пустая, потому что production-сборка подменяет `console.*`, а `logs/client-browser.log` принимает ошибки только с JWT. Гость и зависон до входа туда ничего не пишут.
 
@@ -157,6 +157,8 @@ ergoms ps1-encoding-check --fix
 Ссылка `http://localhost:…` из терминала или чата открывается во вкладке Browser Tab, а не в системном браузере.
 
 В Cursor это не настройка `workbench.browser.openLocalhostLinks`. Переключатель «Open Local Links in Cursor Browser» лежит во внутреннем хранилище. Его выключают `ergoms install-extensions` и расширение ERGO MS User Config при открытии проекта. Затем перезагрузите окно (**Developer: Reload Window**).
+
+Не задавайте `workbench.externalBrowser` значение `"default"`: Cursor тогда не открывает внешние `https://` ссылки. Системный браузер — это отсутствие ключа, а не строка `"default"`.
 
 ## См. также
 

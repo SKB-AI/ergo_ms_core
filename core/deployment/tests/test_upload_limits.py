@@ -13,6 +13,7 @@ from upload_limits import (  # noqa: E402
     parse_hard_max_bytes,
     parse_media_upload_bytes,
     parse_module_ceiling_bytes,
+    parse_modules_max_bytes,
 )
 
 
@@ -36,12 +37,12 @@ class UploadLimitsTests(unittest.TestCase):
         }
         self.assertEqual(parse_hard_max_bytes(env), 800 * 1024 * 1024)
 
-    def test_parse_direct_tasks_default(self) -> None:
-        self.assertEqual(parse_direct_upload_bytes({}), 600 * 1024 * 1024)
+    def test_parse_direct_empty_env(self) -> None:
+        self.assertEqual(parse_direct_upload_bytes({}), 0)
 
-    def test_parse_direct_tasks_custom(self) -> None:
+    def test_parse_direct_discovers_attachment_key(self) -> None:
         self.assertEqual(
-            parse_direct_upload_bytes({'TASKS_MAX_ATTACHMENT_SIZE_MB': '100'}),
+            parse_direct_upload_bytes({'SAMPLE_MOD_MAX_ATTACHMENT_SIZE_MB': '100'}),
             100 * 1024 * 1024,
         )
 
@@ -69,6 +70,13 @@ class UploadLimitsTests(unittest.TestCase):
             ),
             800 * 1024 * 1024,
         )
+
+    def test_parse_modules_discovers_client_upload_key(self) -> None:
+        env = {
+            'MEDIA_UPLOAD_HARD_MAX_SIZE': str(20 * 1024 * 1024 * 1024),
+            'CLIENT_SAMPLE_UPLOAD_MAX_SIZE_MB': '800',
+        }
+        self.assertEqual(parse_modules_max_bytes(env), 800 * 1024 * 1024)
 
     def test_compute_body_hard_wins(self) -> None:
         env = {

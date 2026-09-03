@@ -184,7 +184,7 @@ sections:
   title: Build
   commands:
   - name: client-build
-    summary: Build the client (npm run build)
+    summary: Build the client for this host; with nginx, rewrite site conf and reload
   - name: client-build-analyze
     summary: Build the client with rollup-plugin-visualizer report (dist/stats.html)
   - name: client-build-remote
@@ -432,6 +432,9 @@ sections:
   - name: search-reindex
     invoke: ergoms search-reindex [--index=core_users]
     summary: Reindex Meilisearch (all indexes or one)
+  - name: publish-knowledge-packs
+    invoke: ergoms publish-knowledge-packs
+    summary: Publish this process knowledge packs to media_api (knowledge/)
 - id: packages
   title: Portable packages
   note: 'Registry under virtual_env/packages: core (core_packages.yaml) and modules (packages.yaml). redis/nginx services

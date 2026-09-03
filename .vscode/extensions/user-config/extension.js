@@ -416,6 +416,20 @@ async function applyUserSettings(workspaceFolderUri, showWarning = false) {
             console.log(`Applied setting: ${key}`);
         }
     }
+
+    const desiredKeys = new Set(Object.keys(userSettings));
+    for (const key of [...newErgoKeys]) {
+        if (desiredKeys.has(key)) {
+            continue;
+        }
+        delete globalSettings[key];
+        const idx = newErgoKeys.indexOf(key);
+        if (idx >= 0) {
+            newErgoKeys.splice(idx, 1);
+        }
+        applied++;
+        console.log(`Removed stale setting: ${key}`);
+    }
     
     if (applied > 0) {
         if (writeSettingsFile(globalSettingsPath, globalSettings, newErgoKeys)) {

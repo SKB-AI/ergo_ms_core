@@ -204,20 +204,29 @@ class ClientBuildStep(DeploymentStep):
         return 'client_build'
 
     def run(self, ctx: DeploymentContext) -> StepResult:
+        from lifecycle.client_build_plan import resolve_client_build_plan
+
+        plan = resolve_client_build_plan(ctx.project_root, ctx.raw_env)
+        if plan.is_empty():
+            print(format_console('skip', t('client_build_skip_empty')))
+            return StepResult()
         if not ctx.option_bool('force') and host_ops.client_build_up_to_date(
             ctx.project_root, ctx.raw_env
         ):
             print(format_console('skip', t('client_build_already_fresh_skip')))
             return StepResult()
         print(format_console('info', t('building_client')))
-        if ctx.platform != HostPlatform.WIN32:
+        if plan.shell and ctx.platform != HostPlatform.WIN32:
             from lifecycle.host.privilege import restore_project_ownership
 
             restore_project_ownership(
                 ctx.project_root,
                 ctx.project_root / 'core' / 'client' / 'node_modules',
             )
-        code = host_ops.run_npm(ctx, 'build')
+        code = host_ops.run_python_script(
+            ctx,
+            'core/deployment/scripts/client_build.py',
+        )
         if code == 0:
             host_ops.write_client_build_stamp(ctx.project_root, ctx.raw_env)
         return StepResult(exit_code=code)

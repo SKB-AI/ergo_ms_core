@@ -184,7 +184,7 @@ sections:
   title: Compilation
   commands:
   - name: client-build
-    summary: Compiler le client (npm run build)
+    summary: Compiler le client selon le rôle de l'hôte ; avec nginx, régénère la config et reload
   - name: client-build-analyze
     summary: Compiler le client avec le rapport rollup-plugin-visualizer (dist/stats.html)
   - name: client-build-remote
@@ -433,6 +433,9 @@ sections:
   - name: search-reindex
     invoke: ergoms search-reindex [--index=core_users]
     summary: Réindexation Meilisearch (tous les index ou un seul)
+  - name: publish-knowledge-packs
+    invoke: ergoms publish-knowledge-packs
+    summary: Publier les paquets d'aide de ce processus dans media_api (knowledge/)
 - id: packages
   title: Paquets portables
   note: 'Registre sous virtual_env/packages : noyau (core_packages.yaml) et modules (packages.yaml). Services redis/nginx

@@ -115,12 +115,7 @@ databases:
 
 У части модулей есть собственные `.env.example` в каталоге `modules/<имя>/`. При `setup-full` из них создаётся `modules/<имя>/.env`. Переменные из модульных `.env` **переопределяют** одноимённые из корневого `.env` — и на сервере (Django), и при сборке клиента (Vite).
 
-| Модуль | Файл | Примеры переменных |
-|--------|------|-------------------|
-| `tasks` | `modules/tasks/.env.example` | `TASKS_MAX_ATTACHMENT_SIZE_MB`, `CLIENT_TASKS_MAX_ATTACHMENT_SIZE_MB` |
-| `bi_analysis` | `modules/bi_analysis/.env.example` | `BI_PREVIEW_ASYNC_THRESHOLD`, `FERNET_KEY`, `CLIENT_BI_PREVIEW_ITEMS_PER_PAGE` |
-| `organizations` | `modules/organizations/.env.example` | `ORGANIZATIONS_USE_MEMBER_INVITATIONS` |
-| `video_analysis` | `modules/video_analysis/.env.example` | `VIDEO_ANALYSIS_USE_GPU` |
+Список ключей — в `modules/<имя>/.env.example` каждого модуля, не в ядре. Имена установленных модулей сюда не копируют.
 
 Если модуль указан в `DISABLED_MODULES`, его `.env` не учитывается при сборке клиента, Python/npm-зависимости не устанавливаются (`ergoms python-install`, `ergoms npm run install:all`), пункты меню скрываются в API, `restore_menu` не наполняет меню модуля; в Docker build context каталог `modules/<имя>/` исключается через `Dockerfile.*.dockerignore` (корневой `.dockerignore` не меняется).
 
