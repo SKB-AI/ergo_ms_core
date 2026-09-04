@@ -1,0 +1,43 @@
+---
+description: Куда коммитить — обёртка ergo_ms против submodule core/api, core/client, core/media_api, modules; не пушить указатель SHA
+alwaysApply: true
+---
+
+# Куда коммитить
+
+Просьба «закоммить» или постоянное разрешение на коммит **не** значит коммит в корне workspace. Сначала найди git root каждого изменённого файла. Коммит и push делай **только** в том репозитории, которому файл принадлежит.
+
+Текст сообщения — корневой [`.cursorrules`](../../.cursorrules). Это правило про **куда** класть коммит, не про формулировку.
+
+## Кратко
+
+- `git -C <каталог_файла> rev-parse --show-toplevel` — репозиторий для `git add` / `commit` / `push`.
+- Обёртка (`ergo_ms`, корень workspace): `.cursor/rules/`, `.docs/`, `core/deployment/`, `.gitmodules`, корневые `.gitignore` / `.cursorrules` / примеры env.
+- Свой репозиторий: `core/api`, `core/client`, `core/media_api`, `core/.github`, `modules/<name>`.
+- В `.gitmodules` у submodule стоит `ignore = all`: обёртка **не** фиксирует каждый новый SHA.
+
+## Обязательно
+
+1. Разложи diff по git root. Два репозитория — два коммита, не один в обёртке.
+2. Push — в remote **того** репозитория, где сделан коммит.
+3. Указатель submodule в обёртке (`git add core/client`, `git add modules/<name>`) — **только** если пользователь явно просит закрепить SHA.
+
+## Запрещено
+
+```text
+# BAD — правка в modules/<name>/, а git add modules/<name> и commit в корне ergo_ms
+# BAD — после коммита в core/client сразу chore в обёртке «подтянуть указатель»
+# GOOD — commit и push в git root файла; обёртку не трогать
+```
+
+- Не смешивай в одном коммите обёртки файлы обёртки и смену SHA submodule.
+- Не обновляй pointer «за компанию» после фичи в submodule.
+
+## Связанные правила
+
+| Тема | Файл |
+|------|------|
+| Архитектура | [`struct.mdc`](struct.mdc) |
+| Какой `.gitignore` | [`gitignore.mdc`](gitignore.mdc) |
+| Текст сообщения | [`.cursorrules`](../../.cursorrules) |
+| Community `.github` | [`github-org-community.mdc`](github-org-community.mdc) |

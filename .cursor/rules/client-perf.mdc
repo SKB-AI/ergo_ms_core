@@ -19,7 +19,7 @@ alwaysApply: false
 - i18n — только активный locale (+ fallback) на старте; остальные через `ensureLocaleLoaded` / `setAppLocale`
 - Иконки меню и декларативные UI — per-icon через `LucideIcon` / `lucideIconLoader` (не barrel); см. [`icons.mdc`](icons.mdc)
 - Post-boot (client_monitor, theme manifests, syncSiteTheme) — `requestIdleCallback` / idle после mount
-- Federated remotes — грузить **параллельно**; `initEndpoints` не ждёт remotes (сессия идёт сразу). `initRouter` / меню — после remotes. CSS remote подключать через `ensureRemoteStyles` на маршруте модуля, не на каждой странице. Hashed `/remotes/*/chunks|assets/` кэширует nginx, `remoteEntry.js` — нет. Lucide — `ergo-shared/lucide-icons`, не свой glob в каждом remote.
+- Federated remotes — грузить **параллельно**; `initEndpoints` не ждёт remotes (сессия идёт сразу). `initRouter` сажает bundled-маршруты сразу после ядра; remotes догружаются фоном (`addRoute`), меню ждёт `ensureInitialized`. CSS remote подключать через `ensureRemoteStyles` на маршруте модуля, не на каждой странице. Hashed `/remotes/*/chunks|assets/` кэширует nginx, `remoteEntry.js` — нет. Lucide — `ergo-shared/lucide-icons`, не свой glob в каждом remote.
 - Индикация загрузки списков — [`loading-content-area.mdc`](loading-content-area.mdc), не свой overlay
 
 ## Обязательно

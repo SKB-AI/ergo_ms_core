@@ -34,7 +34,7 @@ Submodule [`ergoms/.github`](https://github.com/ergoms/.github): профиль 
 
 1. Правишь файлы **внутри** `core/.github` (отдельный git root submodule).
 2. Коммит и push — в репозитории `ergoms/.github` (ветка `dev`, как в `.gitmodules`).
-3. В корне `ergo_ms` обновляешь pointer submodule и коммитишь его в мета-репозитории.
+3. Указатель submodule в корне `ergo_ms` — **только** если пользователь явно просит закрепить SHA. Иначе обёртку не трогай. См. [`git-commits.mdc`](git-commits.mdc).
 4. Локально подтянуть уже запушенные изменения: `ergoms update-submodules` (или `git submodule update --init --remote core/.github`).
 
 ```text

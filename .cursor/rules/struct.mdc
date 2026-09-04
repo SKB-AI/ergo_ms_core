@@ -32,5 +32,6 @@ from modules.<name>.api.models import SomeEntity
 | Модули, hook’и, мост | [`modules.mdc`](modules.mdc) |
 | Вынос в сервис | [`modularization.mdc`](modularization.mdc) |
 | `.env` / `env/` | [`env-examples.mdc`](env-examples.mdc) |
+| Куда коммитить | [`git-commits.mdc`](git-commits.mdc) |
 | ergoms | [`no-direct-manage-py.mdc`](no-direct-manage-py.mdc) |
 | Безопасность | [`security.mdc`](security.mdc) |

@@ -129,5 +129,5 @@ indexes = [
 | ORM, ergoms migrate | [`database.mdc`](database.mdc) |
 | Django, User, apps | [`django.mdc`](django.mdc) |
 | Модули, `api/migrations/` | [`modules.mdc`](modules.mdc) |
-| Submodule — куда коммитить | [`gitignore.mdc`](gitignore.mdc) |
+| Submodule — куда коммитить | [`git-commits.mdc`](git-commits.mdc), [`gitignore.mdc`](gitignore.mdc) |
 | Исторический squash shared-цепочки | `ergoms sq-del-migrations` ([`commands.conf`](../../core/deployment/commands.conf)) — не путать с локальным сжатием выше |

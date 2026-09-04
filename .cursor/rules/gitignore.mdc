@@ -127,7 +127,7 @@ databases.yaml
 ```
 
 - Переносить правила из корня в submodule «для порядка» или наоборот — **без** проверки git root.
-- Коммитить `.gitignore` submodule в репозиторий **ergo_ms** (только pointer submodule обновляется из корня).
+- Коммитить содержимое `.gitignore` submodule из корня **ergo_ms**. Указатель SHA в обёртке — только по явной просьбе, см. [`git-commits.mdc`](git-commits.mdc).
 - Путать `core/api/.gitignore` и `core/media_api/.gitignore` — разные репозитории и сервисы.
 
 ## Связанные правила
@@ -135,6 +135,7 @@ databases.yaml
 | Тема | Файл |
 |------|------|
 | Архитектура, submodule | [`struct.mdc`](struct.mdc) |
+| Куда коммитить | [`git-commits.mdc`](git-commits.mdc) |
 | `virtual_env/python/` | [`virtual-env.mdc`](virtual-env.mdc) |
 | npm workspace | [`npm-workspace.mdc`](npm-workspace.mdc) |
 | Deployment, docker | [`deployment-infra.mdc`](deployment-infra.mdc), [`docker.mdc`](docker.mdc) |

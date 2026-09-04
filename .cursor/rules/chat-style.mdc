@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Тон ответов в чате
 
-Это правило про **как отвечать пользователю** в Cursor, не про код и не про документацию в репозитории. Документацию и `.mdc` пиши по [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc). Сообщения коммитов — по корневому [`.cursorrules`](../../.cursorrules).
+Это правило про **как отвечать пользователю** в Cursor, не про код и не про документацию в репозитории. Документацию и `.mdc` пиши по [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc). Текст сообщения коммита — по корневому [`.cursorrules`](../../.cursorrules); **куда** класть коммит — [`git-commits.mdc`](git-commits.mdc).
 
 ## Как говорить
 

@@ -27,7 +27,8 @@ alwaysApply: true
 | Люди | [`.docs/`](../../.docs/) — оглавление в [README.md](../../README.md#документация) |
 | Агент Cursor | [`.cursor/rules/`](.) — см. [`writing-docs-and-rules.mdc`](writing-docs-and-rules.mdc) |
 | Модуль (агент + люди) | `modules/<name>/AGENTS.md`, `.cursor/rules/`, `README.md` — [`module-docs.mdc`](module-docs.mdc) |
-| Generate commit message (✨) | [`.cursorrules`](../../.cursorrules) в корне — commit на русском; не путать с `.mdc` |
+| Generate commit message (✨) | [`.cursorrules`](../../.cursorrules) в корне — формулировка на русском; не путать с `.mdc` |
+| Куда класть коммит | [`git-commits.mdc`](git-commits.mdc) — git root файла, не указатель submodule в обёртке |
 | Развёртывание | [`core/deployment/logic.md`](../../core/deployment/logic.md) |
 | Сообщество GitHub (организация) | [`core/.github/`](../../core/.github/) — submodule; синхронизация с `.docs/` — [`github-org-community.mdc`](github-org-community.mdc) |
 
