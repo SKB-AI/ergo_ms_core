@@ -59,6 +59,9 @@ bridge.provideMany(APPS_MENU_ITEMS_GROUP, 'my_app', {
 
 // BAD — свой резолвер иконок в модуле
 import { icons } from './my-icon-map.js'
+
+// BAD — namespace import тянет все глифы (~1800 HTTP-запросов)
+import * as Lucide from '@lucide/vue'
 ```
 
 ```js

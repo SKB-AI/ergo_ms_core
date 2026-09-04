@@ -115,6 +115,27 @@ function Add-PortableNodejsToPath {
     return $nodeDir
 }
 
+function Set-ModuleApiProcessRole {
+    param(
+        [string]$CommandName,
+        [string]$CommandDef
+    )
+    if (-not [string]::IsNullOrWhiteSpace($env:ERGO_PROCESS_ROLE)) {
+        return
+    }
+    $colon = $CommandName.IndexOf(':')
+    if ($colon -le 0) {
+        return
+    }
+    if ($CommandDef -notmatch '(?:^|&&\s*)api:') {
+        return
+    }
+    $moduleName = $CommandName.Substring(0, $colon).Trim()
+    if (-not [string]::IsNullOrWhiteSpace($moduleName)) {
+        $env:ERGO_PROCESS_ROLE = "module:$moduleName"
+    }
+}
+
 function Invoke-CustomCommand {
     param(
         [string]$CommandName,
@@ -132,6 +153,7 @@ function Invoke-CustomCommand {
     }
     
     $commandDef = $customCommands[$CommandName]
+    Set-ModuleApiProcessRole -CommandName $CommandName -CommandDef $commandDef
     
     # Check if it's a composite command (contains &&)
     if ($commandDef -match '&&') {

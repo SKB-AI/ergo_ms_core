@@ -12,6 +12,7 @@ from service_names import (  # noqa: E402
     ServiceNames,
     module_service_name,
     normalize_service_name,
+    parse_module_unit,
     resolve_service_prefix,
     sanitize_prefix,
 )
@@ -45,6 +46,10 @@ class ServiceNamesTests(unittest.TestCase):
         self.assertEqual(names.module('demo', 'api'), 'ergo_st_m_module_demo_api')
         self.assertEqual(names.celery_worker('heavy'), 'ergo_st_m_celery_worker_heavy')
         self.assertEqual(module_service_name('demo', 'beat', 'ergo_st_m'), 'ergo_st_m_module_demo_beat')
+        self.assertEqual(names.parse_module_unit('ergo_st_m_module_demo_api'), ('demo', 'api'))
+        self.assertEqual(parse_module_unit('ergo_st_m_module_demo_worker', 'ergo_st_m'), ('demo', 'worker'))
+        self.assertEqual(parse_module_unit('ergo_st_m_module_demo_beat.service', 'ergo_st_m'), ('demo', 'beat'))
+        self.assertIsNone(names.parse_module_unit('ergo_st_m_celery_worker_heavy'))
 
     def test_normalize_legacy_uses_current_prefix(self) -> None:
         self.assertEqual(normalize_service_name('ergo-api-dev'), 'ergo_ms_api_dev')

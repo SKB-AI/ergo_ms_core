@@ -89,9 +89,13 @@ sections:
   - name: sync-logs-services
     summary: Afficher les listes multi-terminal (--json TARGET pour JSON)
   - name: rotate-logs
-    summary: Rotation des journaux nginx/redis/client-dev par taille (ERGO_LOG_INFRA_* dans .env)
+    invoke: ergoms rotate-logs [--dry-run] [-v]
+    summary: Rotation des journaux infra par taille et compression gzip (ERGO_LOG_INFRA_* dans .env)
+  - name: logs-status
+    invoke: ergoms logs-status [--json]
+    summary: Afficher l'espace disque utilisé par le répertoire logs/
   - name: install-infra-log-rotate
-    summary: Planificateur de rotation quotidienne des journaux infra (cron / Task Scheduler)
+    summary: Planificateur de rotation des journaux infra (toutes les heures par défaut, cron / Task Scheduler)
   - name: resource-usage
     invoke: ergoms resource-usage [--json] [-w] [--interval N]
     summary: Consommation RAM/CPU des processus ERGO MS sur l'hôte

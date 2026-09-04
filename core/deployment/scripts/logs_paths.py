@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from deployment_env import PROJECT_ROOT
@@ -10,6 +11,8 @@ from log_env import (
     resolve_logs_dir,
     service_log_map,
 )
+
+_MODULE_PROCESS_UNIT_RE = re.compile(r'_module_(.+)_(api|worker|beat)$')
 
 
 def ensure_logs_dir(project_root: Path | None = None) -> Path:
@@ -27,6 +30,52 @@ def service_stderr_log(service_name: str, project_root: Path | None = None) -> P
     return log_file_path(f'{safe}.stderr.log', project_root)
 
 
+def _module_process_log_key(kind: str) -> str | None:
+    if kind == 'api':
+        return 'API'
+    if kind == 'worker':
+        return 'CELERY_WORKER'
+    if kind == 'beat':
+        return 'CELERY_BEAT'
+    return None
+
+
+def parse_module_process_unit(service_name: str) -> tuple[str, str] | None:
+    """Любой префикс: ``*_module_<name>_api|worker|beat``."""
+    base = service_name.replace('.service', '')
+    match = _MODULE_PROCESS_UNIT_RE.search(base)
+    if match is None:
+        return None
+    return match.group(1), match.group(2)
+
+
+def is_known_service_log(service_name: str, project_root: Path | None = None) -> bool:
+    """Имя, для которого есть явный файл лога, даже если OS-службы нет на этом хосте."""
+    if not service_name:
+        return False
+    base = service_name.replace('.service', '')
+    root = project_root or PROJECT_ROOT
+    from service_names import names_from_root
+
+    svc_names = names_from_root(root)
+    if svc_names.is_celery_worker(base) or base.startswith('ergo-celery-worker-'):
+        return True
+    if parse_module_process_unit(base) is not None:
+        return True
+    if base in service_log_map(project_root):
+        return True
+    if base in (
+        svc_names.postgres,
+        'ergo-postgres',
+        f'{svc_names.prefix}_db',
+        f'{svc_names.prefix}_sqlite',
+        f'{svc_names.prefix}_mysql',
+        f'{svc_names.prefix}_mssql',
+    ):
+        return True
+    return False
+
+
 def resolve_service_log_files(service_name: str, project_root: Path | None = None) -> list[Path]:
     base = service_name.replace('.service', '')
     logs_dir = resolve_logs_dir(project_root)
@@ -38,6 +87,12 @@ def resolve_service_log_files(service_name: str, project_root: Path | None = Non
     svc_names = names_from_root(root)
     if svc_names.is_celery_worker(base) or base.startswith('ergo-celery-worker-'):
         return [logs_dir / log_basename('CELERY_WORKER', project_root)]
+
+    parsed_module = parse_module_process_unit(base)
+    if parsed_module is not None:
+        log_key = _module_process_log_key(parsed_module[1])
+        if log_key:
+            return [logs_dir / log_basename(log_key, project_root)]
 
     if base in (
         svc_names.postgres,
@@ -94,6 +149,11 @@ def _cli_main() -> int:
     if command == 'stderr' and len(sys.argv) >= 3:
         root = Path(sys.argv[3]) if len(sys.argv) >= 4 else PROJECT_ROOT
         print(service_stderr_log(sys.argv[2], root), end='')
+        return 0
+
+    if command == 'known' and len(sys.argv) >= 3:
+        root = Path(sys.argv[3]) if len(sys.argv) >= 4 else PROJECT_ROOT
+        print('true' if is_known_service_log(sys.argv[2], root) else 'false', end='')
         return 0
 
     print(f'Неизвестная команда: {command}', file=sys.stderr)

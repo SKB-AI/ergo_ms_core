@@ -57,9 +57,19 @@ normalize_service_name() {
   fi
 }
 
+is_known_service_log() {
+  local service_name="$1"
+  local root="$2"
+  local py script
+  py="$(_ergo_logs_python "$root")" || return 1
+  script="$(_logs_paths_script "$root")"
+  [[ "$("$py" "$script" known "$service_name" "$root" 2>/dev/null)" == "true" ]]
+}
+
 export -f _logs_paths_script
 export -f _ergo_logs_python
 export -f resolve_ergo_logs_dir
 export -f resolve_service_log_files
 export -f resolve_service_stderr_log
 export -f normalize_service_name
+export -f is_known_service_log

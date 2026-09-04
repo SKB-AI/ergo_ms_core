@@ -94,6 +94,12 @@ class CommandsCrossPlatformTests(unittest.TestCase):
         self.assertNotIn('${command_def// && /|}', self.sh_commands)
         self.assertNotIn("$commandDef -split '&&'", self.ps1_commands)
 
+    def test_module_api_commands_bind_process_role(self) -> None:
+        self.assertIn('_ergoms_export_module_api_process_role', self.sh_commands)
+        self.assertIn('ERGO_PROCESS_ROLE="module:${module_name}"', self.sh_commands)
+        self.assertIn('function Set-ModuleApiProcessRole', self.ps1_commands)
+        self.assertIn('$env:ERGO_PROCESS_ROLE = "module:$moduleName"', self.ps1_commands)
+
     def test_test_system_is_registered(self) -> None:
         self.assertIn('test_system', self.conf)
         self.assertIn('test-system', self.conf)

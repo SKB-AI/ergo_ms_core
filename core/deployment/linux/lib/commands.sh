@@ -251,6 +251,25 @@ _suggest_conf_commands() {
   done
 }
 
+_ergoms_export_module_api_process_role() {
+  # Microservice: Django-команда модуля не видна ядру без ERGO_PROCESS_ROLE=module:<name>
+  local cmd_name="$1"
+  local command_def="$2"
+  if [[ -n "${ERGO_PROCESS_ROLE:-}" ]]; then
+    return 0
+  fi
+  if [[ "$cmd_name" != *:* ]]; then
+    return 0
+  fi
+  if [[ ! "$command_def" =~ (^|&&[[:space:]]*)api: ]]; then
+    return 0
+  fi
+  local module_name="${cmd_name%%:*}"
+  if [[ -n "$module_name" ]]; then
+    export ERGO_PROCESS_ROLE="module:${module_name}"
+  fi
+}
+
 invoke_custom_command() {
   local root="$1"
   local cmd_name="$2"
@@ -279,6 +298,7 @@ invoke_custom_command() {
   fi
   
   local command_def="${CUSTOM_COMMANDS[$cmd_name]}"
+  _ergoms_export_module_api_process_role "$cmd_name" "$command_def"
   
   # Check if it's a composite command (contains &&)
   if [[ "$command_def" == *"&&"* ]]; then

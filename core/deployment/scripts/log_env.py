@@ -228,10 +228,18 @@ def _read_int_chain(
     return default
 
 
-def infra_rotation_settings(project_root: Path | None = None) -> dict[str, int | bool]:
+def _read_interval(project_root: Path | None = None) -> str:
+    raw = (_read_env_value('ERGO_LOG_INFRA_ROTATE_INTERVAL', 'hourly', project_root) or 'hourly').strip().lower()
+    return raw if raw in ('hourly', 'daily') else 'hourly'
+
+
+def infra_rotation_settings(project_root: Path | None = None) -> dict[str, int | bool | str]:
     """Параметры ротации nginx/redis/client-dev (ergoms rotate-logs)."""
     return {
         'enabled': read_bool('ERGO_LOG_INFRA_ROTATE_ENABLED', True, project_root),
+        'compress': read_bool('ERGO_LOG_COMPRESS', True, project_root),
+        'retention_days': _read_int_chain(('ERGO_LOG_RETENTION_DAYS',), 14, project_root),
+        'interval': _read_interval(project_root),
         'nginx_max_bytes': _read_int_chain(
             ('ERGO_LOG_NGINX_MAX_BYTES', 'ERGO_LOG_INFRA_MAX_BYTES', 'ERGO_LOG_MAX_BYTES'),
             10 * 1024 * 1024,
@@ -366,7 +374,8 @@ def _cli_main() -> int:
         infra = infra_rotation_settings(pr)
         print(
             f"{int(infra['enabled'])}\t{infra['nginx_max_bytes']}\t{infra['nginx_backup_count']}\t"
-            f"{infra['redis_max_bytes']}\t{infra['redis_backup_count']}\t{infra['schedule_hour']}",
+            f"{infra['redis_max_bytes']}\t{infra['redis_backup_count']}\t{infra['schedule_hour']}\t"
+            f"{int(infra['compress'])}\t{infra['retention_days']}\t{infra['interval']}",
             end='',
         )
         return 0

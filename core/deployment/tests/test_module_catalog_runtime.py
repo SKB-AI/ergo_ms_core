@@ -89,6 +89,45 @@ class ModuleCatalogRuntimeTests(unittest.TestCase):
         )
         self.assertFalse(catalog.is_loadable_in_process('demo_mod'))
 
+    def test_colocate_loads_sibling_in_module_process(self) -> None:
+        catalog = ModuleCatalog(
+            project_root=self._empty_root(),
+            module_runtime='microservice',
+            process_role='module:demo_mod',
+            microservice_modules=frozenset({'demo_mod', 'other_mod'}),
+            process_modules=frozenset({'demo_mod'}),
+            process_modules_explicit=True,
+            colocated_modules=frozenset({'demo_mod', 'other_mod'}),
+            colocate_enabled=True,
+        )
+        self.assertTrue(catalog.is_loadable_in_process('demo_mod'))
+        self.assertTrue(catalog.is_loadable_in_process('other_mod'))
+
+    def test_colocate_loads_microservice_into_core_api(self) -> None:
+        catalog = ModuleCatalog(
+            project_root=self._empty_root(),
+            module_runtime='microservice',
+            process_role='api',
+            microservice_modules=frozenset({'demo_mod'}),
+            colocated_modules=frozenset({'demo_mod'}),
+            colocate_enabled=True,
+        )
+        self.assertTrue(catalog.is_loadable_in_process('demo_mod'))
+
+    def test_colocate_off_keeps_microservice_excluded(self) -> None:
+        catalog = ModuleCatalog.from_env(
+            self._empty_root(),
+            {
+                'MODULE_RUNTIME': 'microservice',
+                'ERGO_PROCESS_ROLE': 'api',
+                'MICROSERVICE_MODULES': 'demo_mod',
+                'BRIDGE_TRANSPORT': 'http',
+                'BRIDGE_COLOCATE': 'off',
+                'BRIDGE_SERVICE_URLS': 'demo_mod=http://127.0.0.1:8123',
+            },
+        )
+        self.assertFalse(catalog.is_loadable_in_process('demo_mod'))
+
     def _empty_root(self):
         from pathlib import Path
 

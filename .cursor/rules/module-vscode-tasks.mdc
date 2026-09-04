@@ -57,7 +57,7 @@ tasks:
 | `setup-full` | шаг `ModuleSetupTasksStep` в рецепте `ergoms setup` / Setup Full System (**до** `MigrateStep`) |
 | `setup-full-after-migrate` | шаг `ModuleSetupTasksAfterMigrateStep` (**после** `MigrateStep`) — когда нужна схема БД |
 | `start-all` | `ergoms start-all` и multi-terminal **Module Services** в Start All Services |
-| `logs-all` | multi-terminal **Logs: All Services** (`provider: ergo-sync`, `target: logs-all`) |
+| `logs-all` | multi-terminal **Logs: All Services** (`provider: ergo-sync`, `target: logs-all`). API/worker/Beat микросервисов ядро сводит к трём общим хвостам по `host_lifecycle.yaml`, не через этот hook |
 
 - `hide: true` скрывает задачу из Run Task, но **не** исключает из агрегата
 - Порядок: `order` (число), затем имя модуля, затем `label`

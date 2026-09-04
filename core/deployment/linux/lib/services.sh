@@ -614,11 +614,11 @@ show_service_logs() {
   for file in "${log_files[@]}"; do
     echo "   $file"
   done
-  if [[ "$service_name" == *_celery_worker* ]]; then
+  if [[ "$service_name" == *_celery_worker* || "$service_name" == *_module_*_worker ]]; then
     write_ergoms_message svc_module_tasks_log_hint gray "" "path=$(resolve_ergo_logs_dir "$root")/celery_tasks.log"
     write_ergoms_message svc_filter_celery_tasks_cmd gray
   fi
-  if [[ "$service_name" == *_celery_beat || "$service_name" == *_celery_beat.service ]]; then
+  if [[ "$service_name" == *_celery_beat || "$service_name" == *_celery_beat.service || "$service_name" == *_module_*_beat ]]; then
     write_ergoms_message svc_module_beat_log_hint gray "" "path=$(resolve_ergo_logs_dir "$root")/celery_beat.log"
     write_ergoms_message svc_filter_celery_beat_cmd gray
   fi

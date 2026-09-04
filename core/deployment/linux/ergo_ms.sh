@@ -446,6 +446,10 @@ main() {
         done
       fi
 
+      if [[ "$valid" == false ]] && is_known_service_log "$service_name" "$ERGO_ROOT"; then
+        valid=true
+      fi
+
       if [[ "$valid" == false ]]; then
         write_ergoms_message 'unknown_service' red stderr "name=$service_name"
         write_ergoms_message available_services yellow --stderr "items=$(units_list "$ERGO_ROOT" | tr '\n' ' ') ergo_ms_nginx ergo_ms_redis ergo_ms_meilisearch $postgres_svc celery-tasks celery-beat setup-full ergoms"

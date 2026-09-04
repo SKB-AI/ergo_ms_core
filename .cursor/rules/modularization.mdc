@@ -19,6 +19,7 @@ alwaysApply: false
 
 - Связь модулей и ядра — ModuleBridge (JSON-примитивы по HTTP: `user_public_id`, не ORM и не `request.user`).
 - Сосед на другом сервере при монолите на этом хосте: `BRIDGE_TRANSPORT=http` и ключ в `BRIDGE_SERVICE_URLS`. Это закрывает `requires` без checkout папки. Не пиши удалённое имя в `MICROSERVICE_MODULES`.
+- Несколько процессов на одной машине и соседи на другой: `BRIDGE_COLOCATE=auto` (по умолчанию при `http`). Loopback и тот же хост вызываются в процессе; URL на другом сервере — HTTP. Выключить: `BRIDGE_COLOCATE=off`. Процесс модуля в `search_path` держит свою схему, схемы таких соседей и `core` — иначе локальный handler не видит чужие таблицы.
 - Схема модуля — `m_<name>` (hook `api/schema.yaml`). Ядро — схема `core`. Схемы `public` нет. SQLite схемы не использует. Даже в монолите таблицы модуля живут в `m_<name>` (migrate ставит схему приложения первой). Физический перенос без запрета FK — `isolated: false`.
 - Изолированный модуль (`isolated: true`) не ставит `ForeignKey` / `OneToOne` на чужой `app_label` и не на `AUTH_USER_MODEL`. Владелец пользователя — ядро; в модуле — `user_public_id`.
 - `Meta.db_table` **без** префикса схемы (иначе сломается SQLite).

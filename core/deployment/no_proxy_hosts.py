@@ -60,7 +60,27 @@ def collect_no_proxy_hosts(values: Mapping[str, str]) -> list[str]:
         _add(host_from_url_or_addr(part.split('=', 1)[1]), out, seen)
     for part in (values.get('API_ALLOWED_HOSTS') or '').split(','):
         _add(part.strip(), out, seen)
+    for key in (
+        'MEDIA_API_ADVERTISE_URL',
+        'MEDIA_API_INTERNAL_URL',
+        'MEDIA_API_URL',
+        'MEDIA_API_HOST',
+    ):
+        _add(host_from_url_or_addr(values.get(key, '')), out, seen)
     return out
+
+
+def apply_effective_no_proxy_to_environ(
+    environ: dict[str, str] | None = None,
+    values: Mapping[str, str] | None = None,
+) -> str:
+    """Пишет в окружение полный NO_PROXY (список из env плюс хосты моста и media)."""
+    dest = environ if environ is not None else os.environ
+    source = values if values is not None else dest
+    csv = collect_no_proxy_csv(source)
+    dest['NO_PROXY'] = csv
+    dest['no_proxy'] = csv
+    return csv
 
 
 def collect_no_proxy_csv(values: Mapping[str, str]) -> str:
@@ -128,6 +148,7 @@ def write_systemd_env_file(root, dest) -> None:
         'ERGO_LOG_CONSOLE=false',
         f'NO_PROXY={no_proxy}',
         f'no_proxy={no_proxy}',
+        f"ERGO_HTTP_TRUST_ENV={(values.get('ERGO_HTTP_TRUST_ENV') or 'false').strip() or 'false'}",
     ]
     for key, value in collect_outbound_proxy(values, fallback=os.environ).items():
         lines.append(f'{key}={value}')

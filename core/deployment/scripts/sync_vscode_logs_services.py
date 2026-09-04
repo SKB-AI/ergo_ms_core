@@ -30,7 +30,14 @@ from module_tasks_loader import (  # noqa: E402
     INCLUDE_START_ALL,
     tasks_for_target,
 )
-from service_names import celery_worker  # noqa: E402
+from logs_paths import parse_module_process_unit  # noqa: E402
+from service_names import names_from_root  # noqa: E402
+
+_SHARED_PROCESS_DESCRIPTIONS = {
+    'api': 'Shared microservice API',
+    'worker': 'Shared Celery Worker',
+    'beat': 'Shared Celery Beat',
+}
 
 # Имена target для extension provider: ergo-sync
 TARGET_LOGS = 'logs'
@@ -73,58 +80,82 @@ def _svc(
     return item
 
 
-def _core_log_services(*, with_commands: bool) -> list[dict[str, str]]:
-    items: list[dict[str, str]] = [
-        _svc(
-            'ergo_ms_api_dev',
-            'Django API server',
-            command='ergoms logs ergo_ms_api_dev 500' if with_commands else '',
-        ),
-    ]
+def _resolve_profile(project_root: Path | None = None):
+    from lifecycle.host_profile import resolve_host_profile_from_root  # noqa: WPS433
+
+    return resolve_host_profile_from_root(project_root or PROJECT_ROOT)
+
+
+def _core_log_services(
+    *,
+    with_commands: bool,
+    project_root: Path | None = None,
+) -> list[dict[str, str]]:
+    from lifecycle.host_profile import (  # noqa: WPS433
+        SERVICE_API,
+        SERVICE_BEAT,
+        SERVICE_CLIENT,
+        SERVICE_MEDIA,
+    )
+
+    root = project_root or PROJECT_ROOT
+    profile = _resolve_profile(root)
+    names = names_from_root(root)
+    items: list[dict[str, str]] = []
+    if profile.wants(SERVICE_API):
+        items.append(
+            _svc(
+                names.api_dev,
+                'Django API server',
+                command=f'ergoms logs {names.api_dev} 500' if with_commands else '',
+            )
+        )
     if is_nginx_enabled():
         items.append(
             _svc(
-                'ergo_ms_nginx',
+                names.nginx,
                 'Nginx reverse proxy',
-                command='ergoms logs ergo_ms_nginx 500' if with_commands else '',
+                command=f'ergoms logs {names.nginx} 500' if with_commands else '',
             )
         )
-    else:
+    elif profile.wants(SERVICE_CLIENT):
         items.append(
             _svc(
-                'ergo_ms_client_dev',
+                names.client_dev,
                 'Vue.js client dev server',
-                command='ergoms logs ergo_ms_client_dev 500' if with_commands else '',
+                command=f'ergoms logs {names.client_dev} 500' if with_commands else '',
             )
         )
-    items.append(
-        _svc(
-            'ergo_ms_media_api',
-            'Media API (CDN / file server)',
-            command='ergoms logs ergo_ms_media_api 500' if with_commands else '',
+    if profile.wants(SERVICE_MEDIA):
+        items.append(
+            _svc(
+                names.media_api,
+                'Media API (CDN / file server)',
+                command=f'ergoms logs {names.media_api} 500' if with_commands else '',
+            )
         )
-    )
-    items.append(
-        _svc(
-            'ergo_ms_celery_beat',
-            'Celery Beat scheduler',
-            command='ergoms logs ergo_ms_celery_beat 500' if with_commands else '',
+    if profile.wants(SERVICE_BEAT):
+        items.append(
+            _svc(
+                names.celery_beat,
+                'Celery Beat scheduler',
+                command=f'ergoms logs {names.celery_beat} 500' if with_commands else '',
+            )
         )
-    )
     if is_redis_enabled():
         items.append(
             _svc(
-                'ergo_ms_redis',
+                names.redis,
                 'Redis',
-                command='ergoms logs ergo_ms_redis 500' if with_commands else '',
+                command=f'ergoms logs {names.redis} 500' if with_commands else '',
             )
         )
     if is_search_enabled():
         items.append(
             _svc(
-                'ergo_ms_meilisearch',
+                names.meilisearch,
                 'Meilisearch',
-                command='ergoms logs ergo_ms_meilisearch 500' if with_commands else '',
+                command=f'ergoms logs {names.meilisearch} 500' if with_commands else '',
             )
         )
     db_mode = get_ergo_db()
@@ -133,7 +164,7 @@ def _core_log_services(*, with_commands: bool) -> list[dict[str, str]]:
     db_key = db_terminal_key(db_mode)
     items.append(
         _svc(
-            f'ergo_ms_{db_key}',
+            f'{names.prefix}_{db_key}',
             db_service_label(db_mode),
             command='ergoms start-db-dev' if with_commands else '',
         )
@@ -141,8 +172,8 @@ def _core_log_services(*, with_commands: bool) -> list[dict[str, str]]:
     return items
 
 
-def _celery_worker_keys() -> list[str]:
-    path = PROJECT_ROOT / 'celery_workers.yaml'
+def _celery_worker_keys(project_root: Path | None = None) -> list[str]:
+    path = (project_root or PROJECT_ROOT) / 'celery_workers.yaml'
     if not path.is_file():
         return ['all']
     try:
@@ -159,10 +190,83 @@ def _celery_worker_keys() -> list[str]:
     return [str(key) for key in workers]
 
 
-def _module_services(include_target: str) -> list[dict[str, str]]:
+def _module_process_log_kinds(project_root: Path | None = None) -> set[str]:
+    """Какие из api/worker/beat есть у микросервисов (host_lifecycle + профиль)."""
+    from env_file_loader import load_project_env  # noqa: WPS433
+    from host_lifecycle_loader import (  # noqa: WPS433
+        allows_module_kind,
+        load_host_lifecycle_entries,
+    )
+    from lifecycle.host_profile import resolve_host_profile  # noqa: WPS433
+    from lifecycle.modules.catalog import ModuleCatalog  # noqa: WPS433
+
+    root = (project_root or PROJECT_ROOT).resolve()
+    file_env = load_project_env(root)
+    catalog = ModuleCatalog.from_env(root, file_env)
+    host_profile = resolve_host_profile(file_env)
+    kinds: set[str] = set()
+    for entry in load_host_lifecycle_entries(str(root)):
+        for unit in entry.service_units:
+            parsed = parse_module_process_unit(unit)
+            if parsed is None:
+                continue
+            _module_name, kind = parsed
+            if kind not in _SHARED_PROCESS_DESCRIPTIONS:
+                continue
+            if not allows_module_kind(catalog, host_profile, entry.module, kind):
+                continue
+            kinds.add(kind)
+    return kinds
+
+
+def _shared_log_key(kind: str, names) -> str:
+    if kind == 'api':
+        return names.api_dev
+    if kind == 'worker':
+        return names.celery_worker_base
+    if kind == 'beat':
+        return names.celery_beat
+    raise ValueError(f'unknown shared log kind: {kind}')
+
+
+def _shared_microservice_log_services(
+    project_root: Path | None = None,
+    *,
+    with_commands: bool = True,
+    existing_keys: set[str] | None = None,
+) -> list[dict[str, str]]:
+    """Три общих хвоста, не отдельный терминал на каждый модуль."""
+    root = project_root or PROJECT_ROOT
+    names = names_from_root(root)
+    skip = set(existing_keys or ())
+    kinds = _module_process_log_kinds(root)
+    items: list[dict[str, str]] = []
+    for kind in ('api', 'worker', 'beat'):
+        if kind not in kinds:
+            continue
+        key = _shared_log_key(kind, names)
+        if key in skip:
+            continue
+        if kind == 'worker' and any(names.is_celery_worker(item) for item in skip):
+            continue
+        items.append(
+            _svc(
+                key,
+                _SHARED_PROCESS_DESCRIPTIONS[kind],
+                command=f'ergoms logs {key} 500' if with_commands else '',
+            )
+        )
+        skip.add(key)
+    return items
+
+
+def _module_services(
+    include_target: str,
+    project_root: Path | None = None,
+) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     seen_keys: set[str] = set()
-    for entry in tasks_for_target(PROJECT_ROOT, include_target):
+    for entry in tasks_for_target(project_root or PROJECT_ROOT, include_target):
         key = entry.service_key
         if key in seen_keys:
             key = f'{entry.module}_{key}'
@@ -179,22 +283,44 @@ def _module_services(include_target: str) -> list[dict[str, str]]:
     return items
 
 
-def build_logs_services() -> list[dict[str, str]]:
-    return _core_log_services(with_commands=False)
-
-
-def build_logs_all_services() -> list[dict[str, str]]:
-    items = list(_core_log_services(with_commands=True))
-    for worker_key in _celery_worker_keys():
-        unit = celery_worker(worker_key)
-        items.append(
-            _svc(
-                unit,
-                f'Celery Worker-{worker_key}',
-                command=f'ergoms logs {unit} 500',
-            )
+def build_logs_services(project_root: Path | None = None) -> list[dict[str, str]]:
+    root = project_root or PROJECT_ROOT
+    items = list(_core_log_services(with_commands=False, project_root=root))
+    items.extend(
+        _shared_microservice_log_services(
+            root,
+            with_commands=False,
+            existing_keys={item['key'] for item in items},
         )
-    items.extend(_module_services(INCLUDE_LOGS_ALL))
+    )
+    return items
+
+
+def build_logs_all_services(project_root: Path | None = None) -> list[dict[str, str]]:
+    from lifecycle.host_profile import SERVICE_YAML_WORKERS  # noqa: WPS433
+
+    root = project_root or PROJECT_ROOT
+    profile = _resolve_profile(root)
+    items = list(_core_log_services(with_commands=True, project_root=root))
+    if profile.wants(SERVICE_YAML_WORKERS):
+        names = names_from_root(root)
+        for worker_key in _celery_worker_keys(root):
+            unit = names.celery_worker(worker_key)
+            items.append(
+                _svc(
+                    unit,
+                    f'Celery Worker-{worker_key}',
+                    command=f'ergoms logs {unit} 500',
+                )
+            )
+    items.extend(
+        _shared_microservice_log_services(
+            root,
+            with_commands=True,
+            existing_keys={item['key'] for item in items},
+        )
+    )
+    items.extend(_module_services(INCLUDE_LOGS_ALL, root))
     return items
 
 

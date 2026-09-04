@@ -2,7 +2,10 @@
 # Актуальный список для Logs: All Services — provider ergo-sync / target logs-all
 # (sync_vscode_logs_services.py --json logs-all): nginx vs client, Redis и Meilisearch из .env.
 # JupyterLab для Start All — target jupyter-dev (ERGO_JUPYTER не none), не этот файл.
-# Воркеры — из celery_workers.yaml; модули — vscode.tasks.yaml (include_in: logs-all).
+# Воркеры yaml — из celery_workers.yaml при HOST_PROFILE с yaml_workers.
+# API/worker/Beat микросервисов — три общих хвоста (api.log, celery_worker.log, celery_beat.log)
+# по host_lifecycle.yaml при MODULE_RUNTIME=microservice, не отдельный терминал на модуль.
+# Прочие модули — vscode.tasks.yaml (include_in: logs-all).
 
 services:
   ergo_ms_api_dev:

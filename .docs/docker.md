@@ -178,7 +178,7 @@ ergoms api createsuperuser --noinput
 - **`postgres_data`** — данные PostgreSQL (profile postgres)
 - **`logs/`** и **`media/`** — по умолчанию bind на хост (`DOCKER_VOLUME_*=bind`)
 
-Журналы API по-прежнему пишутся в `logs/` на хосте при bind-режиме.
+Журналы API по-прежнему пишутся в `logs/` на хосте при bind-режиме. Тот же каталог смотрят `ergoms logs-status` и `ergoms rotate-logs`.
 
 ## Кэш зависимостей
 

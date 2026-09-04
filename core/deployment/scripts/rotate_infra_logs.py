@@ -1,13 +1,15 @@
 ﻿"""
-Ротация логов nginx, Redis, client-dev, LLM serve, Jupyter, Meilisearch, portable PostgreSQL и CLI ergoms по размеру.
+Ротация и гигиена логов nginx, Redis, client-dev, LLM serve, Jupyter, Meilisearch, portable PostgreSQL и CLI ergoms.
 
 nginx: переименование + nginx -s reopen (открывает новые файлы по конфигу).
 Остальные: copytruncate (процесс держит тот же дескриптор).
+Копии сжимаются gzip; срок хранения — ERGO_LOG_RETENTION_DAYS.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -29,35 +31,29 @@ from log_env import (  # noqa: E402
     nginx_access_log_enabled,
     resolve_logs_dir,
 )
-
-
-def _backup_path(path: Path, index: int) -> Path:
-    return Path(f'{path}.{index}')
-
-
-def _shift_backups(path: Path, backup_count: int) -> None:
-    oldest = _backup_path(path, backup_count)
-    if oldest.is_file():
-        oldest.unlink()
-    for index in range(backup_count - 1, 0, -1):
-        src = _backup_path(path, index)
-        if src.is_file():
-            src.rename(_backup_path(path, index + 1))
+from log_hygiene import (  # noqa: E402
+    backup_plain,
+    compress_numbered_backups,
+    format_bytes,
+    list_log_files,
+    prune_numbered_backups,
+    shift_backups,
+)
 
 
 def rotate_rename(path: Path, max_bytes: int, backup_count: int) -> bool:
     if not path.is_file() or path.stat().st_size <= max_bytes:
         return False
-    _shift_backups(path, backup_count)
-    path.rename(_backup_path(path, 1))
+    shift_backups(path, backup_count)
+    path.rename(backup_plain(path, 1))
     return True
 
 
 def rotate_copytruncate(path: Path, max_bytes: int, backup_count: int) -> bool:
     if not path.is_file() or path.stat().st_size <= max_bytes:
         return False
-    _shift_backups(path, backup_count)
-    shutil.copy2(path, _backup_path(path, 1))
+    shift_backups(path, backup_count)
+    shutil.copy2(path, backup_plain(path, 1))
     with path.open('w', encoding='utf-8'):
         pass
     return True
@@ -120,16 +116,7 @@ def reopen_nginx_logs(root: Path) -> bool:
     return reopen.returncode == 0
 
 
-def rotate_infra_logs(root: Path, *, dry_run: bool = False, verbose: bool = False) -> int:
-    settings = infra_rotation_settings(root)
-    if not settings['enabled']:
-        if verbose:
-            print('[ergoms] Infra log rotation disabled (ERGO_LOG_INFRA_ROTATE_ENABLED=false)')
-        return 0
-
-    rotated_any = False
-    nginx_rotated = False
-
+def _infra_targets(root: Path, settings: dict[str, object]) -> list[tuple[str, Path, int, int, str]]:
     targets: list[tuple[str, Path, int, int, str]] = [
         (
             'nginx-error',
@@ -195,7 +182,6 @@ def rotate_infra_logs(root: Path, *, dry_run: bool = False, verbose: bool = Fals
             'copytruncate',
         ),
     ]
-
     if nginx_access_log_enabled(root):
         targets.insert(
             1,
@@ -207,36 +193,117 @@ def rotate_infra_logs(root: Path, *, dry_run: bool = False, verbose: bool = Fals
                 'rename',
             ),
         )
+    return targets
 
+
+def print_logs_status(root: Path, *, as_json: bool = False) -> int:
+    logs_dir = resolve_logs_dir(root)
+    files = list_log_files(logs_dir)
+    total = sum(item.size for item in files)
+    if as_json:
+        payload = {
+            'dir': str(logs_dir),
+            'total_bytes': total,
+            'files': [
+                {
+                    'path': str(item.path.relative_to(logs_dir)),
+                    'bytes': item.size,
+                }
+                for item in files
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0
+    if not files:
+        print(t('log_status_empty', path=logs_dir))
+        return 0
+    print(t('log_status_header', path=logs_dir))
+    for item in files:
+        rel = item.path.relative_to(logs_dir)
+        print(f'{format_bytes(item.size):>8}  {rel}')
+    print(t('log_status_total', size=format_bytes(total), count=len(files)))
+    return 0
+
+
+def _apply_hygiene(
+    label: str,
+    path: Path,
+    backup_count: int,
+    *,
+    compress: bool,
+    retention_days: int,
+    dry_run: bool,
+) -> bool:
+    changed = False
+    if compress:
+        if dry_run:
+            for index in range(1, backup_count + 1):
+                raw = backup_plain(path, index)
+                if raw.is_file():
+                    print(t('log_rotate_compress_dry', label=label, path=raw, size=raw.stat().st_size))
+                    changed = True
+        else:
+            for dest, before, after in compress_numbered_backups(path, backup_count):
+                print(
+                    t(
+                        'log_rotate_compressed',
+                        label=label,
+                        path=dest,
+                        before=format_bytes(before),
+                        after=format_bytes(after),
+                    )
+                )
+                changed = True
+    if dry_run:
+        return changed
+    for removed in prune_numbered_backups(path, backup_count, retention_days):
+        print(t('log_rotate_pruned', label=label, path=removed))
+        changed = True
+    return changed
+
+
+def rotate_infra_logs(root: Path, *, dry_run: bool = False, verbose: bool = False) -> int:
+    settings = infra_rotation_settings(root)
+    if not settings['enabled']:
+        if verbose:
+            print('[ergoms] Infra log rotation disabled (ERGO_LOG_INFRA_ROTATE_ENABLED=false)')
+        return 0
+
+    rotated_any = False
+    nginx_rotated = False
+    targets = _infra_targets(root, settings)
+    compress = bool(settings['compress'])
+    retention_days = int(settings['retention_days'])
     resolve_logs_dir(root).mkdir(parents=True, exist_ok=True)
 
     for label, path, max_bytes, backup_count, mode in targets:
-        if not path.is_file():
-            continue
-        size = path.stat().st_size
-        if size <= max_bytes:
-            if verbose:
+        if path.is_file():
+            size = path.stat().st_size
+            if size > max_bytes:
+                if dry_run:
+                    print(t('log_rotate_dry_run', label=label, path=path, size=size, max_bytes=max_bytes))
+                    rotated_any = True
+                    if mode == 'rename':
+                        nginx_rotated = True
+                elif mode == 'rename':
+                    if rotate_rename(path, max_bytes, backup_count):
+                        print(t('log_rotate_ok', label=label, path=path))
+                        rotated_any = True
+                        nginx_rotated = True
+                elif rotate_copytruncate(path, max_bytes, backup_count):
+                    print(t('log_rotate_ok', label=label, path=path))
+                    rotated_any = True
+            elif verbose:
                 print(t('log_rotate_skip_size', label=label, path=path, size=size, max_bytes=max_bytes))
-            continue
-
-        if dry_run:
-            print(t('log_rotate_dry_run', label=label, path=path, size=size, max_bytes=max_bytes))
+        if _apply_hygiene(
+            label,
+            path,
+            backup_count,
+            compress=compress,
+            retention_days=retention_days,
+            dry_run=dry_run,
+        ):
             rotated_any = True
-            if mode == 'rename':
-                nginx_rotated = True
-            continue
-
-        if mode == 'rename':
-            did = rotate_rename(path, max_bytes, backup_count)
-            if did:
-                print(t('log_rotate_ok', label=label, path=path))
-                rotated_any = True
-                nginx_rotated = True
-        else:
-            did = rotate_copytruncate(path, max_bytes, backup_count)
-            if did:
-                print(t('log_rotate_ok', label=label, path=path))
-                rotated_any = True
 
     if nginx_rotated and not dry_run:
         if reopen_nginx_logs(root):
@@ -250,12 +317,17 @@ def rotate_infra_logs(root: Path, *, dry_run: bool = False, verbose: bool = Fals
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description='Rotate nginx/redis/client-dev logs by size (.env)')
+    parser = argparse.ArgumentParser(description='Rotate and compress infra logs by size (.env)')
     parser.add_argument('--root', type=Path, default=PROJECT_ROOT, help='Project root')
     parser.add_argument('--dry-run', action='store_true', help='Only show what would rotate')
     parser.add_argument('-v', '--verbose', action='store_true', help='Print skipped files')
+    parser.add_argument('--status', action='store_true', help='Show logs/ disk usage and exit')
+    parser.add_argument('--json', action='store_true', help='JSON for --status')
     args = parser.parse_args()
-    return rotate_infra_logs(args.root.resolve(), dry_run=args.dry_run, verbose=args.verbose)
+    root = args.root.resolve()
+    if args.status:
+        return print_logs_status(root, as_json=args.json)
+    return rotate_infra_logs(root, dry_run=args.dry_run, verbose=args.verbose)
 
 
 if __name__ == '__main__':

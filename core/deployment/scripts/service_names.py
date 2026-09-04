@@ -146,6 +146,21 @@ class ServiceNames:
     def module(self, module: str, kind: str) -> str:
         return f'{self.prefix}_module_{_safe_module_token(module)}_{kind}'
 
+    def parse_module_unit(self, name: str) -> tuple[str, str] | None:
+        """Разбор ``{prefix}_module_{token}_{kind}`` → (module, api|worker|beat)."""
+        base = name.replace('.service', '')
+        token = f'{self.prefix}_module_'
+        if not base.startswith(token):
+            return None
+        rest = base[len(token):]
+        for kind in ('worker', 'beat', 'api'):
+            suffix = f'_{kind}'
+            if rest.endswith(suffix):
+                module = rest[: -len(suffix)]
+                if module:
+                    return module, kind
+        return None
+
     def wildcard(self) -> str:
         return f'{self.prefix}_*'
 
@@ -226,6 +241,13 @@ def celery_worker_key(name: str, prefix: str | None = None) -> str | None:
 
 def module_service_name(module: str, kind: str, prefix: str | None = None) -> str:
     return ServiceNames(prefix).module(module, kind)
+
+
+def parse_module_unit(
+    name: str,
+    prefix: str | None = None,
+) -> tuple[str, str] | None:
+    return ServiceNames(prefix).parse_module_unit(name)
 
 
 def normalize_service_name(name: str, prefix: str | None = None) -> str:

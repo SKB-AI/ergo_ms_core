@@ -656,7 +656,7 @@
         },
         {
             "label": "Logs: All Services",
-            "detail": "Открыть терминалы логов ядра, default БД, Celery и модулей",
+            "detail": "Открыть терминалы логов ядра, три общих хвоста микросервисов (API, worker, Beat), default БД и модулей",
             "type": "multi-terminal",
             "sources": [
                 {

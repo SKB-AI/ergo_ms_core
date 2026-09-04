@@ -90,9 +90,13 @@ sections:
     invoke: ergoms sync-logs-services [--json TARGET | --json-all]
     summary: Показать списки сервисов multi-terminal (--json TARGET для JSON)
   - name: rotate-logs
-    summary: Ротировать nginx/redis/client-dev по размеру (ERGO_LOG_INFRA_* в .env)
+    invoke: ergoms rotate-logs [--dry-run] [-v]
+    summary: Ротировать infra-логи по размеру, сжать копии gzip (ERGO_LOG_INFRA_* в .env)
+  - name: logs-status
+    invoke: ergoms logs-status [--json]
+    summary: Показать, сколько места занимает каталог logs/
   - name: install-infra-log-rotate
-    summary: Планировщик ежедневной ротации infra-логов (cron / Task Scheduler)
+    summary: Планировщик ротации infra-логов (по умолчанию каждый час, cron / Task Scheduler)
   - name: resource-usage
     invoke: ergoms resource-usage [--json] [-w] [--interval N]
     summary: Потребление RAM/CPU процессов ERGO MS на хосте

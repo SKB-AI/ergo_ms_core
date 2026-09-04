@@ -40,7 +40,9 @@ alwaysApply: false
 | `ergoms.log` | остальные конечные команды `ergoms` (не `logs`/`help` и не долгий start/dev) |
 | `<service>.stderr.log` | crash/traceback служб (не дублирует app-логи) |
 
-**Ротация:** Python (`api.log`, Celery, …) — `RotatingFileHandler` (`ERGO_LOG_MAX_BYTES`). nginx / Redis / `client-dev.log` / `ollama-serve.log` / `jupyter.log` / `meilisearch.log` / `postgresql.log` / `setup-full.log` / `ergoms.log` — `ergoms rotate-logs` (`ERGO_LOG_INFRA_*`); ежедневно — `ergoms install-infra-log-rotate`. Сессия CLI перед записью тоже крутит файл по `ERGO_LOG_MAX_BYTES`.
+OS-службы модуля (`{prefix}_module_<name>_api|worker|beat`) пишут в те же общие файлы: API → `api.log`, worker → `celery_worker.log`, Beat → `celery_beat.log`. `ergoms logs` принимает и имя модуля, и общий ключ (`ergo_ms_api_dev`, `ergo_ms_celery_worker`, `ergo_ms_celery_beat`). **Logs: All Services** в microservice открывает эти три хвоста, а не отдельный терминал на каждый модуль.
+
+**Ротация:** Python (`api.log`, Celery, …) — `RotatingFileHandler` (`ERGO_LOG_MAX_BYTES`). nginx / Redis / `client-dev.log` / `ollama-serve.log` / `jupyter.log` / `meilisearch.log` / `postgresql.log` / `setup-full.log` / `ergoms.log` — `ergoms rotate-logs` (`ERGO_LOG_INFRA_*`): по размеру, затем gzip копий (`ERGO_LOG_COMPRESS`) и удаление старше `ERGO_LOG_RETENTION_DAYS`. Планировщик — `ergoms install-infra-log-rotate` (по умолчанию каждый час, `ERGO_LOG_INFRA_ROTATE_INTERVAL`). Сводка по диску — `ergoms logs-status`. Сессия CLI перед записью тоже крутит файл по `ERGO_LOG_MAX_BYTES`.
 
 PID и temp nginx/redis — в `virtual_env/packages/*/run|temp`, **не** в `logs/`.
 
@@ -159,7 +161,7 @@ ergoms logs ergo_ms_celery_worker
 |--------|------------|
 | Каталог | `ERGO_LOGS_DIR` |
 | Общие уровни | `ERGO_LOG_FILE_LEVEL`, `ERGO_LOG_CONSOLE`, `ERGO_LOG_CONSOLE_LEVEL` |
-| Ротация | `ERGO_LOG_MAX_BYTES`, `ERGO_LOG_BACKUP_COUNT`, `ERGO_LOG_BROKER_*` |
+| Ротация | `ERGO_LOG_MAX_BYTES`, `ERGO_LOG_BACKUP_COUNT`, `ERGO_LOG_BROKER_*`, `ERGO_LOG_COMPRESS`, `ERGO_LOG_RETENTION_DAYS` |
 | Имена файлов | `ERGO_LOG_FILE_<KEY>` (`API`, `CELERY_WORKER`, `NGINX_ERROR`, `REDIS`, `OLLAMA`, `JUPYTER`, `SETUP_FULL`, `ERGOMS`, …) |
 | Уровни файлов | `ERGO_LOG_LEVEL_<KEY>` (`AUDIT`, `CELERY_BROKER`, `CLIENT_BROWSER`, …) |
 | API | `API_LOG_FILE_LEVEL`, `API_LOG_CONSOLE`, `API_LOG_CONSOLE_LEVEL` |
@@ -172,7 +174,7 @@ ergoms logs ergo_ms_celery_worker
 | Журнал действий | `AUDIT_LOG_FILE_ENABLED`, `AUDIT_LOG_FILE_LEVEL` |
 | nginx | `NGINX_ERROR_LOG_LEVEL`, `NGINX_ACCESS_LOG_ENABLED` → `ergoms reload-nginx` |
 | Redis | `REDIS_LOG_LEVEL` → `ergoms install-redis` |
-| Ротация infra | `ERGO_LOG_INFRA_*`, `ERGO_LOG_NGINX_*`, `ERGO_LOG_REDIS_*` → `ergoms rotate-logs`; планировщик — `install-infra-log-rotate` |
+| Ротация infra | `ERGO_LOG_INFRA_*`, `ERGO_LOG_NGINX_*`, `ERGO_LOG_REDIS_*`, `ERGO_LOG_COMPRESS`, `ERGO_LOG_RETENTION_DAYS` → `ergoms rotate-logs` / `logs-status`; планировщик — `install-infra-log-rotate` |
 
 После смены имён файлов или путей client-dev/nginx/redis: **`ergoms install-services`** / **`reload-nginx`** / **`install-redis`**.
 После смены лимитов infra-ротации достаточно **`ergoms rotate-logs`** (перезапуск служб не нужен).
@@ -195,6 +197,8 @@ ergoms logs ergo-ollama
 ergoms logs ergo_ms_jupyter
 ergoms logs setup-full
 ergoms logs ergoms
+ergoms logs-status
+ergoms rotate-logs
 ```
 
 `ergoms logs` читает **файлы** в `logs/`, не journald/NSSM `ergo-*.log`.

@@ -662,7 +662,16 @@ function Main {
                 exit 0
             }
 
-            if ($serviceNames -notcontains $serviceName) {
+            $knownLog = $false
+            $pathsScript = Join-Path $projectRoot 'core\deployment\scripts\logs_paths.py'
+            if ((Test-Path -LiteralPath $pythonExe) -and (Test-Path -LiteralPath $pathsScript)) {
+                $knownRaw = & $pythonExe $pathsScript known $serviceName $projectRoot 2>$null
+                if ("$knownRaw".Trim() -eq 'true') {
+                    $knownLog = $true
+                }
+            }
+
+            if (($serviceNames -notcontains $serviceName) -and -not $knownLog) {
 
                 Write-ErgomsMessage -Key 'unknown_service' -Color Red -Stderr -Param @{ name = $serviceName }
 
