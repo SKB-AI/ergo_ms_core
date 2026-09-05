@@ -30,7 +30,7 @@ MCP даёт агенту Cursor инструменты для работы с A
 | Сервер | `modules/<имя>/mcp/server.py` |
 | Имя в Cursor | `ergo-module-<kebab-case>` (уникально в проекте) |
 | Tools | `<module>_<action>` или устоявшиеся префиксы пакета модуля |
-| Секреты | из `.env` / `env/mcp.env` (`ADMIN_LOGIN`, `ADMIN_PASSWORD`), не в manifest и не в коде |
+| Секреты | из `.env` / `env/mcp.env` (`ADMIN_LOGIN`, `ADMIN_PASSWORD`), не в manifest и не в коде. Те же поля — вход во встроенном браузере Cursor ([`cursor-browser.mdc`](cursor-browser.mdc)) |
 
 ### manifest.yaml
 

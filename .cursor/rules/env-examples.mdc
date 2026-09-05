@@ -21,7 +21,7 @@ alwaysApply: false
 | [`env/jupyter.env.example`](../../env/jupyter.env.example) | `API_JUPYTER_*` |
 | [`env/smtp.env.example`](../../env/smtp.env.example) | `EMAIL_*` (SMTP) |
 | [`env/logging.env.example`](../../env/logging.env.example) | логи, клиентский лог/мониторинг, аудит |
-| [`env/mcp.env.example`](../../env/mcp.env.example) | `ADMIN_LOGIN` / `ADMIN_PASSWORD` для MCP |
+| [`env/mcp.env.example`](../../env/mcp.env.example) | `ADMIN_LOGIN` / `ADMIN_PASSWORD` для MCP и встроенного браузера Cursor |
 | [`env/media.env.example`](../../env/media.env.example) | `MEDIA_API_*`, пути и лимиты загрузок |
 | [`env/realtime.env.example`](../../env/realtime.env.example) | `REALTIME_*`, channel layer |
 | [`env/cache.env.example`](../../env/cache.env.example) | `API_CACHE_*`, TTL меню/прав/уведомлений |

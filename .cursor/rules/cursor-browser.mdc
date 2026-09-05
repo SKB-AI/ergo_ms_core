@@ -1,0 +1,44 @@
+---
+description: Встроенный браузер Cursor — вход админом из env/mcp.env (ADMIN_LOGIN, ADMIN_PASSWORD), без пароля в чате
+alwaysApply: true
+---
+
+# Встроенный браузер Cursor
+
+Когда проверяешь клиент во встроенном браузере Cursor (`cursor-ide-browser`), **войди сам** учёткой из `env/mcp.env`. Не спрашивай пароль у пользователя.
+
+Хук `sessionStart` (`.cursor/hooks.json`) подставляет ту же инструкцию в контекст сессии. Пароль в хук не попадает.
+
+## Кратко
+
+- Логин и пароль — `ADMIN_LOGIN` и `ADMIN_PASSWORD` в `env/mcp.env` (или корневой `.env`)
+- Прочитай файл сам. Не печатай пароль в чат и не копируй его в правило, коммит или пример
+- Форма: `#login`, `#password`, кнопка `button[type="submit"]`
+- Адрес сайта — `FRONTEND_BASE_URL`, иначе nginx (`NGINX_PUBLIC_HOST` / `NGINX_SERVER_NAME`), иначе `CLIENT_HOST`:`CLIENT_PORT`. Не зашивай hostname в правило
+- Успешный вход — URL с `/home` и боковое меню. JWT в `localStorage` не клади
+
+## Обязательно
+
+1. Перед входом прочитай `env/mcp.env`. Если полей нет — остановись и скажи, что учётка не задана.
+2. Открой `/login`, заполни поля, отправь форму.
+3. Если пользователя ещё нет: `ergoms api createsuperuser --noinput` с `DJANGO_SUPERUSER_*`, затем запиши тот же пароль в `env/mcp.env`.
+
+## Запрещено
+
+```text
+# BAD — выдумать пароль или спросить его в чате
+# BAD — напечатать ADMIN_PASSWORD в ответе пользователю
+# BAD — подставить JWT в localStorage вместо формы входа
+```
+
+```text
+# GOOD — прочитать env/mcp.env и войти через #login / #password
+```
+
+## Связанные правила
+
+| Тема | Файл |
+|---|---|
+| MCP читает те же поля | [`mcp.mdc`](mcp.mdc) |
+| Безопасность, секреты | [`security.mdc`](security.mdc) |
+| Живые проверки стека | [`system-test.mdc`](system-test.mdc) |

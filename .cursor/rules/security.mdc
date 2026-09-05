@@ -49,3 +49,4 @@ alwaysApply: true
 | Глобальный админ | [`global-admin.mdc`](global-admin.mdc) |
 | Права маршрутов (UX) | [`permission_rules.mdc`](permission_rules.mdc) |
 | Живые проверки стека | [`system-test.mdc`](system-test.mdc) |
+| Вход в браузере Cursor | [`cursor-browser.mdc`](cursor-browser.mdc) |

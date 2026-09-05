@@ -216,3 +216,9 @@
 	branch = dev
 	update = merge
 	ignore = all
+[submodule "modules/minigames"]
+	path = modules/minigames
+	url = https://github.com/ergoms/ergo_ms_minigames.git
+	branch = dev
+	update = merge
+	ignore = all
