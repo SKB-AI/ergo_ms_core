@@ -323,6 +323,8 @@ import { MoreHorizontal, Edit, Trash2 } from '@lucide/vue'
 
 Пропсы: `size` (по умолчанию 40), `clickable`, `title`, `customAvatarUrl`, `userRef`, `firstName`, `lastName`, `showOnlineStatus`, `showPresenceTooltip`.
 
+Инициалы — только из имени и фамилии (поля API или ФИО из двух и больше слов в `title`). Логин и пустые имя/фамилия дают иконку Lucide `User`, не буквы.
+
 Если сериализатор API ещё не отдаёт `public_id` — добавь поле тем же паттерном, что в [`security-details.mdc`](security-details.mdc), а не обходи через pk в prop аватара.
 
 Типичные размеры: 32 (списки), 40 (меню), 120 (профиль).
