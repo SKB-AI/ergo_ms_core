@@ -64,6 +64,7 @@ import DatePicker from '@/components/DatePicker.vue'
   <DatePicker id="start-date" v-model="startDate" />
   <DatePicker id="end-date" v-model="endDate" :min-date="startDate || null" />
   <DatePicker id="start-at" v-model="startAt" enable-time />
+  <DatePicker id="start-at-long" v-model="startAt" enable-time input-format="dd MMMM yyyy HH:mm" edit-format="dd.MM.yy. HH:mm" />
   <DatePicker id="start-at-12" v-model="startAt" enable-time time-format="12" />
   <DatePicker id="from-month" v-model="fromMonth" month-picker :min-date="minMonth" :max-date="maxMonth" />
 </template>
@@ -75,6 +76,8 @@ import DatePicker from '@/components/DatePicker.vue'
 | `id` | для `<label for>` / `FormField` `label-for` |
 | `placeholder` | своя подсказка; иначе `components.datePicker.placeholder` / `placeholderDateTime` / `placeholderDateTime12` / `placeholderMonth` |
 | `enableTime` | выбор и отображение времени (по умолчанию выкл.) |
+| `inputFormat` | свой формат поля в покое (`dd MMMM yyyy HH:mm` → «07 сентября 2026 14:00»); иначе `dd.MM.yyyy` / с временем `dd.MM.yyyy HH:mm` |
+| `editFormat` | формат при фокусе для ввода (`dd.MM.yy. HH:mm` → «07.09.26. 14:00»); без него поле не переключается |
 | `timeFormat` | `'24'` (по умолчанию) или `'12'`; только вместе с `enableTime` |
 | `monthPicker` | выбор месяца и года, значение `YYYY-MM` |
 | `disabled` | блокировка |
