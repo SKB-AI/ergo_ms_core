@@ -91,6 +91,17 @@ def run_remote_build(project_root: Path, module_name: str) -> int:
     )
 
 
+def _prepare_unprivileged_build(project_root: Path) -> None:
+    from lifecycle.host.privilege import (
+        drop_to_project_owner,
+        restore_client_build_ownership,
+    )
+
+    restore_client_build_ownership(project_root)
+    if drop_to_project_owner(project_root):
+        print(format_console('info', t('client_build_drop_root')))
+
+
 def reload_nginx_after_build(project_root: Path, environ: dict[str, str]) -> int:
     if not should_reload_nginx_after_client_build(environ):
         return 0
@@ -110,6 +121,7 @@ def execute_client_build(
     only_modules: list[str] | None = None,
     skip_nginx_reload: bool = False,
 ) -> int:
+    _prepare_unprivileged_build(project_root)
     plan = resolve_client_build_plan(
         project_root,
         environ,
@@ -139,9 +151,14 @@ def execute_client_build(
         code = run_remote_build(project_root, name)
         if code != 0:
             return code
+    from lifecycle.host.privilege import restore_client_build_ownership
+
     if skip_nginx_reload:
+        restore_client_build_ownership(project_root)
         return 0
-    return reload_nginx_after_build(project_root, environ)
+    code = reload_nginx_after_build(project_root, environ)
+    restore_client_build_ownership(project_root)
+    return code
 
 
 def main(argv: list[str] | None = None) -> int:

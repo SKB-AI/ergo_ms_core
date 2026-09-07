@@ -154,6 +154,7 @@ client_build_skip_shell: "Site shell skipped: this host does not serve it (HOST_
 client_build_skip_empty: "Client build skipped: this host has neither a local shell nor federated remotes"
 client_build_nginx_reload: "Rewriting nginx site config and reloading after the client build"
 client_build_skip_nginx_not_installed: "nginx reload skipped: portable nginx is not installed"
+client_build_drop_root: "Build continues as the project owner, not root"
 collectstatic_already_fresh_skip: "Static files already collected — collectstatic skipped"
 git_submodules_local_ok: "Git submodules already initialized (without --remote)"
 git_submodules_already_init_skip: "Git submodules already initialized — update skipped"

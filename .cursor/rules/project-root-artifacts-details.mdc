@@ -35,6 +35,19 @@ alwaysApply: false
 | clean trash | `.ergo_clean_trash_*` в корне (в `.gitignore`) |
 | Снимки SQL-баз | `virtual_env/backups/<метка>/` (`ergoms db-backup`; `ergoms clean` не трогает) |
 
+## Владелец файлов (Linux)
+
+`logs/`, `core/client/dist` и `virtual_env/client-remotes` должны принадлежать владельцу корня проекта, не `root`. Имя пользователя **не** пиши в `chown`: бери uid/gid из `stat` корня через [`restore_project_ownership`](../../core/deployment/lifecycle/host/privilege.py). Сборка клиента сама возвращает владельца; юниты API/Celery/media ставят `User=` того же владельца.
+
+```bash
+# BAD
+sudo chown -R administrator:administrator logs core/client/dist
+
+# GOOD — владелец корня, без имени в команде
+# Python: restore_project_ownership(root, root / 'logs')
+# bash:   restore_project_ownership "$root" "$root/logs"
+```
+
 ## Обязательно
 
 - `PIP_CACHE_DIR`, `POETRY_CACHE_DIR`, `npm_config_cache` → `virtual_env/cache/…` ([`ops.py`](../../core/deployment/lifecycle/host/ops.py), `commands.ps1` / `commands.sh`)

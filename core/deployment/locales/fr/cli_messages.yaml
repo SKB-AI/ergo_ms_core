@@ -154,6 +154,7 @@ client_build_skip_shell: "Enveloppe du noyau ignorée : cet hôte ne la sert pas
 client_build_skip_empty: "Compilation du client ignorée : cet hôte n'a ni enveloppe locale ni remotes federated"
 client_build_nginx_reload: "Régénération de la config nginx et reload après la compilation du client"
 client_build_skip_nginx_not_installed: "Reload nginx ignoré : nginx portable n'est pas installé"
+client_build_drop_root: "La compilation continue avec le propriétaire du projet, pas root"
 collectstatic_already_fresh_skip: "fichiers statiques déjà collectés — collectstatic ignoré"
 git_submodules_local_ok: "Sous-modules Git déjà initialisés (sans --remote)"
 git_submodules_already_init_skip: "Sous-modules Git déjà initialisés — update ignoré"

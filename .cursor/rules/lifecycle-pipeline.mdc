@@ -16,6 +16,7 @@ alwaysApply: false
 - Реестр: [`lifecycle/recipes.py`](../../core/deployment/lifecycle/recipes.py); список: `ergoms` через runner или `py -3.12 core/deployment/lifecycle/runner.py --list`
 - **Составные** команды — только рецепт runner; **примитивы** (`api:migrate`, `npm:run build`) — в `commands.conf` для разработки
 - Linux `sudo` для infra — внутри [`privilege.py`](../../core/deployment/lifecycle/host/privilege.py), не в `tasks.json`
+- Владелец `logs/`, `core/client/dist` и remotes — владелец корня проекта. Не пиши `chown user:user`: вызови `restore_project_ownership` / `restore_client_build_ownership`. Имя пользователя не хардкодится.
 
 ## Цепочка
 

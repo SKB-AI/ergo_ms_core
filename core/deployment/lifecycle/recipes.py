@@ -134,6 +134,7 @@ def build_recipe_registry() -> dict[str, RecipeSpec]:
                 ModuleSetupTasksAfterMigrateStep(),
                 WarmupCachesStep(if_needed=True),
                 CollectStaticStep(),
+                RestoreArtifactOwnershipStep(),
                 # finally: остановить nginx/redis/модульные демоны и при ошибке посередине.
                 StopSetupStartedInfraStep(),
             ),
