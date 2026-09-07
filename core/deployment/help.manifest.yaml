@@ -274,7 +274,7 @@ sections:
   - name: maintenance-status
     summary: Статус режима технических работ
   - name: restore-menu
-    summary: Восстановить меню из миграций
+    summary: Восстановить меню из ядра и живых модулей
   - name: sq-del-migrations
     summary: Squash миграций в 2 фазы (create / finalize)
   - name: sync-squashed-migrations

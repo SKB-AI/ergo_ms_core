@@ -113,7 +113,7 @@ modules/<имя>/
 
 ### Боковое меню
 
-Пункты sidebar живут в БД (`MenuItem`). Модуль добавляет их **миграцией** через `MenuMigrationHelper`, а не JSON на клиенте. Маршруты страниц — в `client/js/routes.js`. Порядок и видимость администратор меняет в CMS.
+Пункты sidebar живут в БД ядра (`MenuItem`). Модуль описывает их **миграцией** через `MenuMigrationHelper` (не JSON на клиенте). Процесс модуля отдаёт то же дерево по мосту `menu.catalog`, чтобы ядро собрало меню без копии репозитория модуля. Маршруты страниц — в `client/js/routes.js`. Порядок и видимость администратор меняет в CMS.
 
 Эталон: `modules/module_template/api/migrations/` с `*_add_menu.py`. Правило: [`.cursor/rules/menu.mdc`](../.cursor/rules/menu.mdc).
 
