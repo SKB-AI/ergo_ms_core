@@ -1,5 +1,5 @@
 ---
-description: Индекс UI-компонентов ядра — SelectBox, SearchInput, DecimalInput, DatePicker, ToggleSwitch, TriStateSwitch, DropZone, FormCard, FormField, SettingsCard, SettingsCardRow, FilterMenu, DropDown, DataTable, UserAvatar
+description: Индекс UI-компонентов ядра — SelectBox, SearchInput, DecimalInput, DatePicker, ToggleSwitch, TriStateSwitch, DropZone, FormCard, FormField, SettingsCard, SettingsCardRow, FilterMenu, DropDown, DataTable, UserAvatar, DocumentViewer
 alwaysApply: false
 ---
 
@@ -31,6 +31,7 @@ alwaysApply: false
 | Аватар пользователя | `UserAvatar` | этот раздел |
 | Контентное изображение (режим без картинок) | `ContentImage` | [`client-a11y.mdc`](client-a11y.mdc) |
 | Предпросмотр фото (галерея, зум) | `ImageLightbox` (`backdrop`: `dim` / `blur`) | этот раздел |
+| Просмотр PDF и DOCX | `DocumentViewer`, `DocumentViewerModal` | этот раздел |
 | Skip-link / landmarks | `SkipLink`, `<main id="main-content">` | [`client-a11y.mdc`](client-a11y.mdc) |
 | Динамические Lucide-иконки | `LucideIcon` (имя PascalCase) | [`icons.mdc`](icons.mdc) |
 
@@ -331,6 +332,46 @@ import { MoreHorizontal, Edit, Trash2 } from '@lucide/vue'
 Если сериализатор API ещё не отдаёт `public_id` — добавь поле тем же паттерном, что в [`security-details.mdc`](security-details.mdc), а не обходи через pk в prop аватара.
 
 Типичные размеры: 32 (списки), 40 (меню), 120 (профиль).
+
+## Просмотр PDF и DOCX — DocumentViewer
+
+Компоненты: [`DocumentViewer.vue`](../../core/client/src/components/DocumentViewer.vue), [`DocumentViewerModal.vue`](../../core/client/src/components/DocumentViewerModal.vue). Файл грузится через `fetchMediaBlob` из [`mediaPreview.js`](../../core/client/src/js/utils/mediaPreview.js), не через iframe `/serve/` (`X-Frame-Options: DENY`).
+
+PDF — `pdfjs-dist` (worker из бандла). DOCX — `docx-preview`. Старый `.doc`, таблицы и архивы — кнопка «Скачать». Компонент подключай через `defineAsyncComponent`.
+
+```vue
+<script setup>
+import { defineAsyncComponent, ref } from 'vue'
+
+const DocumentViewer = defineAsyncComponent(() => import('@/components/DocumentViewer.vue'))
+const DocumentViewerModal = defineAsyncComponent(
+  () => import('@/components/DocumentViewerModal.vue'),
+)
+
+const showViewer = ref(false)
+</script>
+
+<template>
+  <DocumentViewer :src="fileUrl" :filename="downloadFilename" />
+  <DocumentViewerModal
+    :visible="showViewer"
+    :src="fileUrl"
+    :filename="downloadFilename"
+    @close="showViewer = false"
+  />
+</template>
+```
+
+| Prop | Когда |
+|------|-------|
+| `src` | подписанный URL media_api |
+| `filename` | имя файла для типа и скачивания |
+| `compact` | ниже панель на карточке |
+| `showToolbar` | `false` — без панели масштаба и страниц |
+
+Модалка: `visible`, `src`, `filename`, `title`, `modalId`.
+
+**Запрещено:** iframe `/serve/`, worker pdf.js с CDN, JWT в query URL.
 
 ## Связанные правила
 
