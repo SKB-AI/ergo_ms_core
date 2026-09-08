@@ -12,27 +12,32 @@
  * доустанавливает недостающие модульные пакеты. Кэш npm чистится, только
  * если что-то сняли.
  *
- * С --install-all — ещё ставит зависимости ядра, если lock ядра сменился или
- * не хватает пакетов ядра. В тот же `npm install` передаются пакеты модулей
- * (`--no-save`), чтобы npm не снимал их как лишние и не ставил вторым проходом.
+ * С --install-all — ставит ядро целиком только если node_modules пуст или нет
+ * ссылок workspace. Недостающие пакеты ядра ставятся отдельно в staging, без
+ * повторного разрешения уже стоящего Vue. Сменившийся lock при пакетах на
+ * месте только обновляет отпечаток. Пакеты модулей тоже доустанавливаются
+ * в staging и копируются, чтобы `npm install` в npm-root не снимал --no-save
+ * пакеты и не упирался в peer-зависимости.
  * С --update — переустанавливает модульные пакеты в пределах semver из package.json.
  * С --check — код 0, если прямые пакеты ядра и модулей есть в node_modules, иначе 1.
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { loadDisabledModules } from '../../../core/client/scripts/lib/parse-disabled-modules.js'
 import { runNpm } from './run_npm_spawn.js'
 import {
   collectCoreDirectNames,
   collectKeepDirectNames,
+  collectMissingCoreInstallSpecs,
   isCoreTreeCurrent,
   isKeepTreeCurrent,
   moduleSpecsObject,
+  nodeModulesIsEmpty,
   pruneUnreachableTopLevelPackages,
   readModuleSpecsStamp,
+  workspaceLinksMissing,
   writeCoreTreeStamp,
   writeKeepTreeStamp,
   writeModuleSpecsStamp,
@@ -48,12 +53,17 @@ const INSTALL_ALL = process.argv.includes('--install-all')
 const UPDATE = process.argv.includes('--update')
 const CHECK_ONLY = process.argv.includes('--check')
 const INSTALL_MISSING = process.argv.includes('--install-missing') || INSTALL_ALL
-const CORE_INSTALL_FLAGS = [
+const INSTALL_FLAGS = [
   '--no-save',
   '--ignore-scripts',
   '--no-package-lock',
   '--no-audit',
   '--no-fund',
+  '--legacy-peer-deps',
+  '--loglevel=http',
+  '--fetch-retries=5',
+  '--fetch-retry-mintimeout=2000',
+  '--fetch-retry-maxtimeout=15000',
 ]
 const PACKAGE_FILTERS = process.argv
   .slice(2)
@@ -126,17 +136,6 @@ function modulePackageSpecs(moduleDeps) {
   )
 }
 
-const DOCKER_NPM_FLAGS = [
-  '--no-save',
-  '--no-package-lock',
-  '--ignore-scripts',
-  '--no-audit',
-  '--no-fund',
-]
-
-function isDockerNpmInstall() {
-  return Boolean(process.env.ERGO_DOCKER_SERVICE_NAME?.trim())
-}
 
 function latestNpmDebugLogText() {
   const logsDir = path.join(NPM_CACHE, '_logs')
@@ -219,23 +218,38 @@ function copyPackageTree(sourceDir, targetDir) {
   fs.cpSync(sourceDir, targetDir, { recursive: true, force: true })
 }
 
-function installMissingPackagesDocker(specs) {
+function installPackageSpecsInStaging(specs, label) {
   const cacheTmp = path.join(ROOT, 'virtual_env', 'cache', 'tmp')
   fs.mkdirSync(cacheTmp, { recursive: true })
   const staging = fs.mkdtempSync(path.join(cacheTmp, 'ergo-npm-mod-'))
-  const npmCmd = 'npm'
 
-  console.log(`[npm] Доустановка пакетов в staging (${specs.length}): ${specs.join(', ')}`)
+  console.log(`[npm] ${label} в staging (${specs.length}): ${specs.join(', ')}`)
+  console.log('[npm] Запросы в registry видны ниже; таймаут 60 с, до 5 повторов.')
+  fs.writeFileSync(
+    path.join(staging, 'package.json'),
+    `${JSON.stringify({ name: 'ergo-npm-staging', private: true, version: '0.0.0' })}\n`,
+    'utf8',
+  )
+  fs.writeFileSync(
+    path.join(staging, '.npmrc'),
+    [
+      'install-strategy=hoisted',
+      'package-lock=false',
+      'legacy-peer-deps=true',
+      'fetch-timeout=60000',
+      'fetch-retries=5',
+      'fetch-retry-mintimeout=2000',
+      'fetch-retry-maxtimeout=15000',
+      'progress=true',
+      '',
+    ].join('\n'),
+    'utf8',
+  )
 
   try {
-    const result = runNpmInstallWithCacheRepair(() => spawnSync(
-      npmCmd,
-      ['install', ...specs, ...DOCKER_NPM_FLAGS, '--loglevel=warn'],
-      {
-        cwd: staging,
-        stdio: 'inherit',
-        env: process.env,
-      },
+    const result = runNpmInstallWithCacheRepair(() => runNpm(
+      ['install', ...specs, ...INSTALL_FLAGS, '--prefix', staging],
+      { cwd: staging },
     ))
 
     if (!result || result.status !== 0) {
@@ -243,6 +257,10 @@ function installMissingPackagesDocker(specs) {
     }
 
     const stagingModules = path.join(staging, 'node_modules')
+    if (!fs.existsSync(stagingModules)) {
+      console.error(`[npm] Staging node_modules не появился: ${stagingModules}`)
+      process.exit(1)
+    }
     const targetModules = path.join(NPM_ROOT, 'node_modules')
     fs.mkdirSync(targetModules, { recursive: true })
 
@@ -273,29 +291,7 @@ function installPackageSpecs(specs, label) {
     return
   }
 
-  if (isDockerNpmInstall()) {
-    installMissingPackagesDocker(specs)
-    return
-  }
-
-  console.log(`[npm] ${label} (${specs.length}): ${specs.join(', ')}`)
-
-  const result = runNpmInstallWithCacheRepair(() => runNpm(
-    [
-      'install',
-      ...specs,
-      '--no-save',
-      '--no-package-lock',
-      '--ignore-scripts',
-      '--no-audit',
-      '--no-fund',
-    ],
-    { cwd: NPM_ROOT },
-  ))
-
-  if (!result || result.status !== 0) {
-    process.exit(result?.status ?? 1)
-  }
+  installPackageSpecsInStaging(specs, label)
 }
 
 function installMissingPackages(missing) {
@@ -332,31 +328,37 @@ function prunePackagesOutsideKeepTree(moduleDeps, { force = false } = {}) {
   return removed
 }
 
-function installCorePackagesIfNeeded(moduleDeps) {
-  const current = isCoreTreeCurrent({
+function installCorePackagesIfNeeded() {
+  if (isCoreTreeCurrent({
     npmRoot: NPM_ROOT,
     nodeModules: NODE_MODULES,
-  })
-  if (current) {
+  })) {
     console.log('[npm] Зависимости ядра уже установлены — npm install пропущен.')
     return false
   }
 
-  const specs = modulePackageSpecs(moduleDeps)
-  if (specs.length > 0) {
-    console.log(
-      `[npm] Установка зависимостей ядра вместе с пакетами модулей (${specs.length})...`,
-    )
-  } else {
-    console.log('[npm] Установка зависимостей ядра...')
+  const missingSpecs = collectMissingCoreInstallSpecs(NPM_ROOT, NODE_MODULES)
+  const needFullInstall = nodeModulesIsEmpty(NODE_MODULES)
+    || workspaceLinksMissing(NPM_ROOT, NODE_MODULES)
+
+  if (!needFullInstall && missingSpecs.length === 0) {
+    writeCoreTreeStamp(NPM_ROOT, NODE_MODULES)
+    console.log('[npm] Пакеты ядра на месте — отпечаток lock обновлён, npm install пропущен.')
+    return false
   }
 
-  const result = runNpmInstallWithCacheRepair(
-    () => runNpm(['install', ...specs, ...CORE_INSTALL_FLAGS], { cwd: NPM_ROOT }),
-  )
-  if (!result || result.status !== 0) {
-    process.exit(result?.status ?? 1)
+  if (needFullInstall) {
+    console.log('[npm] Установка зависимостей ядра (node_modules пуст или нет ссылок workspace)...')
+    const result = runNpmInstallWithCacheRepair(
+      () => runNpm(['install', ...INSTALL_FLAGS], { cwd: NPM_ROOT }),
+    )
+    if (!result || result.status !== 0) {
+      process.exit(result?.status ?? 1)
+    }
+  } else {
+    installPackageSpecs(missingSpecs, 'Доустановка пакетов ядра')
   }
+
   writeCoreTreeStamp(NPM_ROOT, NODE_MODULES)
   return true
 }
@@ -365,6 +367,13 @@ function ensureNpmCacheEnv() {
   fs.mkdirSync(NPM_CACHE, { recursive: true })
   process.env.npm_config_cache = NPM_CACHE
   process.env.NPM_CONFIG_CACHE = NPM_CACHE
+  // Staging не читает virtual_env/npm/.npmrc — те же пределы, что в npm-root.
+  if (!process.env.npm_config_fetch_timeout) {
+    process.env.npm_config_fetch_timeout = '60000'
+  }
+  if (!process.env.npm_config_fetch_retries) {
+    process.env.npm_config_fetch_retries = '2'
+  }
 }
 
 function cleanCacheTmp() {
@@ -565,8 +574,7 @@ function ensureModulePackagesInstalled(moduleDeps) {
     console.log(`  - ${entry.depName}`)
   }
 
-  // Иначе npm install subset --no-save снимет остальные модульные пакеты как extraneous.
-  installMissingPackages(uniqueAll)
+  installMissingPackages(needed)
 
   const stillMissing = needed.filter((entry) => !isDependencyInstalled(entry.depName))
   if (stillMissing.length > 0) {
@@ -616,7 +624,7 @@ function main() {
 
   let coreInstalled = false
   if (INSTALL_ALL) {
-    coreInstalled = installCorePackagesIfNeeded(allModuleDeps)
+    coreInstalled = installCorePackagesIfNeeded()
   }
 
   // Свой prune: `npm prune` снял бы --no-save пакеты модулей.
