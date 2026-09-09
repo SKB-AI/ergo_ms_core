@@ -15,7 +15,7 @@ alwaysApply: false
 
 ## Кратко
 
-- **Регистрация пунктов модуля** — миграция данных API через `MenuMigrationHelper` (`core/api/src/core/cms/adp/menu/migration_utils.py`)
+- **Регистрация пунктов модуля** — миграция данных API через `MenuMigrationHelper` (`core/api/src/core/cms/adp/menu/migration_utils.py`). Процесс модуля отдаёт то же дерево в группе `menu.catalog`; кнопка в CMS забирает его с живых сервисов
 - **Каталог vs layout** — `MenuItem`/`MenuSeparator` (seed) + `MenuLayoutPlacement`/`MenuSeparatorLayout` (порядок, parent, видимость, якоря разделителей). Ключ — `catalog_key`, не PK/`public_id`
 - **Маршруты Vue** — `modules/<имя>/client/js/routes.js` (обязательно для навигации)
 - **Рантайм** — `UserMenuView` → `getUserMenu()` → `MenuList` (поля order/parent материализованы из layout)
@@ -50,7 +50,7 @@ router.push(`/users/${user.id}`)
 
 ## Цепочка данных
 
-1. **Миграция / restore**: upsert каталога по `catalog_key`; layout-таблицы не wipe’атся
+1. **Миграция / restore**: upsert каталога по `catalog_key` (с процесса модуля через `menu.catalog` или с диска ядра); layout-таблицы не wipe’атся
 2. **Материализация**: `layout_service.materialize_all_layouts` / helper при create — order/parent/`before_catalog_key` на каталог
 3. **API**: `UserMenuView` — фильтр пунктов и разделителей по правам (`user_menu_builder` / `MenuAccessChecker`); админ CRUD пишет и каталог, и layout
 4. **Клиент**: `getUserMenu()` → `transformMenuData()` / `transformSeparators` (якорь `before_catalog_key`) → `MenuList`
@@ -68,7 +68,7 @@ Composables UI sidebar: `useMenuWidth`, `useMenuNavigation`, `useMenuCollapsedPr
 | Seed separator | `{module_source}::separator::{slug(name)}` |
 | Админ | `admin::{public_id}` / `admin::separator::{public_id}` |
 
-`restore_menu` и `clear_module_items` удаляют seed-каталог, но не `MenuLayoutPlacement` / `MenuSeparatorLayout`; админские `admin::*` пункты сохраняются.
+`restore_menu` и `clear_module_items` удаляют seed-каталог, но не `MenuLayoutPlacement` / `MenuSeparatorLayout`; админские `admin::*` пункты сохраняются. Для вынесенного модуля ядро сначала берёт снимок с процесса (`bridge.all('menu.catalog')`), и только если соседа нет — проигрывает миграции с диска ядра.
 
 ## Миграция меню — базовый пример
 

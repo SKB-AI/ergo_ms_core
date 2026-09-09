@@ -68,6 +68,10 @@ install_unit() {
   mkdir -p "$units_dir" "$root/logs"
   printf "%s" "$content" > "$unit_path"
   chmod 0644 "$unit_path" 2>/dev/null || true
+  restore_project_ownership "$root" "$units_dir"
+  restore_project_ownership "$root" "$root/logs"
+  restore_project_ownership "$root" "$root/virtual_env/cache"
+  restore_project_ownership "$root" "$root/virtual_env/celery"
 
   if [[ -f "$legacy_path" && ! -L "$legacy_path" ]]; then
     if [[ $(id -u) -eq 0 ]]; then
@@ -98,11 +102,25 @@ enable_and_start() {
   fi
 }
 
+# User=/Group= из владельца корня проекта, без хардкода имени.
+_systemd_project_user_block() {
+  local root="$1"
+  local user group
+  [[ -n "$root" ]] || return 0
+  user="$(stat -c '%U' "$root" 2>/dev/null || true)"
+  group="$(stat -c '%G' "$root" 2>/dev/null || true)"
+  [[ -n "$user" && "$user" != "root" ]] || return 0
+  [[ -n "$group" ]] || group="$user"
+  printf 'User=%s\nGroup=%s\n' "$user" "$group"
+}
+
 # Получение базовых unit definitions (API, Client, Beat)
 get_base_unit_definitions() {
   local root="${1:-}"
-  local client_log client_stdout client_stderr
+  local client_log="" client_stdout="" client_stderr=""
   local logs_dir="${root}/logs"
+  local user_block=""
+  user_block="$(_systemd_project_user_block "$root")"
   # systemd требует абсолютный путь в StandardError/StandardOutput — ${ERGO_ROOT} не раскрывается.
   local api_name beat_name media_name redis_name
   api_name="$(ergo_service_name api_dev "$root")"
@@ -136,6 +154,7 @@ Wants=${redis_name}.service
 
 [Service]
 Type=simple
+${user_block}
 EnvironmentFile=__ERGO_MS_ENV__
 ExecStart=/bin/bash -lc 'cd "\$ERGO_ROOT" && . "\$ERGO_ROOT/virtual_env/python/bin/activate" && python core/api/scripts/start_api.py'
 Restart=always
@@ -158,6 +177,7 @@ After=network.target
 
 [Service]
 Type=simple
+${user_block}
 EnvironmentFile=__ERGO_MS_ENV__
 ExecStart=/bin/bash -lc 'cd "\$ERGO_ROOT" && . "\$ERGO_ROOT/virtual_env/python/bin/activate" && python core/deployment/scripts/start_client_if_dev.py'
 Restart=always
@@ -180,6 +200,7 @@ Requires=${api_name}.service
 
 [Service]
 Type=simple
+${user_block}
 EnvironmentFile=__ERGO_MS_ENV__
 ExecStart=/bin/bash -lc 'cd "\$ERGO_ROOT/core" && . "\$ERGO_ROOT/virtual_env/python/bin/activate" && python api/scripts/start_celery_beat.py'
 Restart=always
@@ -202,6 +223,7 @@ After=network.target
 
 [Service]
 Type=simple
+${user_block}
 EnvironmentFile=__ERGO_MS_ENV__
 Environment=PYTHONUNBUFFERED=1
 Environment=ERGO_LOG_CONSOLE=false
@@ -227,10 +249,11 @@ UNIT
 generate_worker_unit() {
   local worker_name="$1"
   local root="${2:-}"
-  local worker_base api_name
+  local worker_base api_name user_block
   worker_base="$(ergo_service_name celery_worker "$root")"
   api_name="$(ergo_service_name api_dev "$root")"
   local worker_stderr="${root}/logs/${worker_base}_${worker_name}.stderr.log"
+  user_block="$(_systemd_project_user_block "$root")"
 
   cat <<UNIT
 [Unit]
@@ -240,6 +263,7 @@ Requires=${api_name}.service
 
 [Service]
 Type=simple
+${user_block}
 EnvironmentFile=__ERGO_MS_ENV__
 ExecStart=/bin/bash -lc 'cd "\$ERGO_ROOT/core" && . "\$ERGO_ROOT/virtual_env/python/bin/activate" && python api/scripts/start_celery_worker.py --worker=$worker_name'
 Restart=always
@@ -258,10 +282,11 @@ UNIT
 # Генерация unit для единственного worker'а (без конфига)
 generate_default_worker_unit() {
   local root="${1:-}"
-  local worker_base api_name
+  local worker_base api_name user_block
   worker_base="$(ergo_service_name celery_worker "$root")"
   api_name="$(ergo_service_name api_dev "$root")"
   local worker_stderr="${root}/logs/${worker_base}.stderr.log"
+  user_block="$(_systemd_project_user_block "$root")"
 
   cat <<UNIT
 [Unit]
@@ -271,6 +296,7 @@ Requires=${api_name}.service
 
 [Service]
 Type=simple
+${user_block}
 EnvironmentFile=__ERGO_MS_ENV__
 ExecStart=/bin/bash -lc 'cd "\$ERGO_ROOT/core" && . "\$ERGO_ROOT/virtual_env/python/bin/activate" && python api/scripts/start_celery_worker.py'
 Restart=always
@@ -329,6 +355,7 @@ enable_and_start_workers() {
 export -f write_env_file
 export -f install_unit
 export -f enable_and_start
+export -f _systemd_project_user_block
 export -f get_base_unit_definitions
 export -f generate_worker_unit
 export -f generate_default_worker_unit

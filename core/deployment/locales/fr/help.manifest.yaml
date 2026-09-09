@@ -273,7 +273,7 @@ sections:
   - name: maintenance-status
     summary: État du mode maintenance
   - name: restore-menu
-    summary: Restaurer le menu depuis les migrations
+    summary: Restaurer le menu depuis le noyau et les modules en ligne
   - name: sq-del-migrations
     summary: Fusion des migrations en 2 phases (create / finalize)
   - name: sync-squashed-migrations

@@ -1,5 +1,5 @@
 ---
-description: Индекс UI-компонентов ядра — SelectBox, SearchInput, DecimalInput, DatePicker, ToggleSwitch, TriStateSwitch, DropZone, FormCard, FormField, SettingsCard, SettingsCardRow, FilterMenu, DropDown, DataTable, UserAvatar
+description: Индекс UI-компонентов ядра — SelectBox, SearchInput, DecimalInput, DatePicker, ToggleSwitch, TriStateSwitch, DropZone, FormCard, FormField, SettingsCard, SettingsCardRow, FilterMenu, DropDown, DataTable, UserAvatar, DocumentViewer
 alwaysApply: false
 ---
 
@@ -31,6 +31,7 @@ alwaysApply: false
 | Аватар пользователя | `UserAvatar` | этот раздел |
 | Контентное изображение (режим без картинок) | `ContentImage` | [`client-a11y.mdc`](client-a11y.mdc) |
 | Предпросмотр фото (галерея, зум) | `ImageLightbox` (`backdrop`: `dim` / `blur`) | этот раздел |
+| Просмотр PDF и DOCX | `DocumentViewer`, `DocumentViewerModal` | этот раздел |
 | Skip-link / landmarks | `SkipLink`, `<main id="main-content">` | [`client-a11y.mdc`](client-a11y.mdc) |
 | Динамические Lucide-иконки | `LucideIcon` (имя PascalCase) | [`icons.mdc`](icons.mdc) |
 
@@ -64,6 +65,7 @@ import DatePicker from '@/components/DatePicker.vue'
   <DatePicker id="start-date" v-model="startDate" />
   <DatePicker id="end-date" v-model="endDate" :min-date="startDate || null" />
   <DatePicker id="start-at" v-model="startAt" enable-time />
+  <DatePicker id="start-at-long" v-model="startAt" enable-time input-format="dd MMMM yyyy HH:mm" edit-format="dd.MM.yy. HH:mm" />
   <DatePicker id="start-at-12" v-model="startAt" enable-time time-format="12" />
   <DatePicker id="from-month" v-model="fromMonth" month-picker :min-date="minMonth" :max-date="maxMonth" />
 </template>
@@ -75,6 +77,8 @@ import DatePicker from '@/components/DatePicker.vue'
 | `id` | для `<label for>` / `FormField` `label-for` |
 | `placeholder` | своя подсказка; иначе `components.datePicker.placeholder` / `placeholderDateTime` / `placeholderDateTime12` / `placeholderMonth` |
 | `enableTime` | выбор и отображение времени (по умолчанию выкл.) |
+| `inputFormat` | свой формат поля в покое (`dd MMMM yyyy HH:mm` → «07 сентября 2026 14:00»); иначе `dd.MM.yyyy` / с временем `dd.MM.yyyy HH:mm` |
+| `editFormat` | формат при фокусе для ввода (`dd.MM.yy. HH:mm` → «07.09.26. 14:00»); без него поле не переключается |
 | `timeFormat` | `'24'` (по умолчанию) или `'12'`; только вместе с `enableTime` |
 | `monthPicker` | выбор месяца и года, значение `YYYY-MM` |
 | `disabled` | блокировка |
@@ -328,6 +332,46 @@ import { MoreHorizontal, Edit, Trash2 } from '@lucide/vue'
 Если сериализатор API ещё не отдаёт `public_id` — добавь поле тем же паттерном, что в [`security-details.mdc`](security-details.mdc), а не обходи через pk в prop аватара.
 
 Типичные размеры: 32 (списки), 40 (меню), 120 (профиль).
+
+## Просмотр PDF и DOCX — DocumentViewer
+
+Компоненты: [`DocumentViewer.vue`](../../core/client/src/components/DocumentViewer.vue), [`DocumentViewerModal.vue`](../../core/client/src/components/DocumentViewerModal.vue). Файл грузится через `fetchMediaBlob` из [`mediaPreview.js`](../../core/client/src/js/utils/mediaPreview.js), не через iframe `/serve/` (`X-Frame-Options: DENY`).
+
+PDF — `pdfjs-dist` (worker из бандла). DOCX — `docx-preview`. Старый `.doc`, таблицы и архивы — кнопка «Скачать». Компонент подключай через `defineAsyncComponent`.
+
+```vue
+<script setup>
+import { defineAsyncComponent, ref } from 'vue'
+
+const DocumentViewer = defineAsyncComponent(() => import('@/components/DocumentViewer.vue'))
+const DocumentViewerModal = defineAsyncComponent(
+  () => import('@/components/DocumentViewerModal.vue'),
+)
+
+const showViewer = ref(false)
+</script>
+
+<template>
+  <DocumentViewer :src="fileUrl" :filename="downloadFilename" />
+  <DocumentViewerModal
+    :visible="showViewer"
+    :src="fileUrl"
+    :filename="downloadFilename"
+    @close="showViewer = false"
+  />
+</template>
+```
+
+| Prop | Когда |
+|------|-------|
+| `src` | подписанный URL media_api |
+| `filename` | имя файла для типа и скачивания |
+| `compact` | ниже панель на карточке |
+| `showToolbar` | `false` — без панели масштаба и страниц |
+
+Модалка: `visible`, `src`, `filename`, `title`, `modalId`.
+
+**Запрещено:** iframe `/serve/`, worker pdf.js с CDN, JWT в query URL.
 
 ## Связанные правила
 

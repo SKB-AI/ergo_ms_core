@@ -7,6 +7,8 @@
  *
  * Актуальность ядра — по наличию прямых пакетов и отпечатку package-lock.json,
  * не по mtime package.json: правка скриптов иначе снова гоняла бы npm install.
+ * Недостающие пакеты ядра считает collectMissingCoreInstallSpecs: workspace
+ * пакеты в specs не попадают, их ставит полный npm install в npm-root.
  */
 
 import crypto from 'node:crypto'
@@ -30,7 +32,18 @@ function depNamesFromPackage(pkg) {
   ]
 }
 
-export function collectCoreDirectNames(npmRoot) {
+function addDepVersions(pkg, versions) {
+  for (const section of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+    const deps = pkg[section] ?? {}
+    for (const [name, version] of Object.entries(deps)) {
+      if (name && !versions.has(name)) {
+        versions.set(name, String(version ?? ''))
+      }
+    }
+  }
+}
+
+export function collectWorkspacePackageNames(npmRoot) {
   const names = new Set()
   const rootPkgPath = path.join(npmRoot, 'package.json')
   if (!fs.existsSync(rootPkgPath)) {
@@ -38,10 +51,6 @@ export function collectCoreDirectNames(npmRoot) {
   }
 
   const rootPkg = readPackageJson(rootPkgPath)
-  for (const name of depNamesFromPackage(rootPkg)) {
-    names.add(name)
-  }
-
   for (const workspace of rootPkg.workspaces ?? []) {
     if (typeof workspace !== 'string') {
       continue
@@ -54,12 +63,78 @@ export function collectCoreDirectNames(npmRoot) {
     if (workspacePkg.name) {
       names.add(String(workspacePkg.name))
     }
-    for (const name of depNamesFromPackage(workspacePkg)) {
-      names.add(name)
-    }
   }
 
   return names
+}
+
+export function collectCorePackageVersions(npmRoot) {
+  const versions = new Map()
+  const rootPkgPath = path.join(npmRoot, 'package.json')
+  if (!fs.existsSync(rootPkgPath)) {
+    return versions
+  }
+
+  const rootPkg = readPackageJson(rootPkgPath)
+  addDepVersions(rootPkg, versions)
+
+  for (const workspace of rootPkg.workspaces ?? []) {
+    if (typeof workspace !== 'string') {
+      continue
+    }
+    const workspacePkgPath = path.resolve(npmRoot, workspace, 'package.json')
+    if (!fs.existsSync(workspacePkgPath)) {
+      continue
+    }
+    addDepVersions(readPackageJson(workspacePkgPath), versions)
+  }
+
+  return versions
+}
+
+export function collectCoreDirectNames(npmRoot) {
+  const names = new Set(collectCorePackageVersions(npmRoot).keys())
+  for (const name of collectWorkspacePackageNames(npmRoot)) {
+    names.add(name)
+  }
+  return names
+}
+
+export function nodeModulesIsEmpty(nodeModules) {
+  if (!fs.existsSync(nodeModules)) {
+    return true
+  }
+  try {
+    return fs.readdirSync(nodeModules).length === 0
+  } catch {
+    return true
+  }
+}
+
+export function collectMissingCoreInstallSpecs(npmRoot, nodeModules) {
+  const versions = collectCorePackageVersions(npmRoot)
+  const workspaceNames = collectWorkspacePackageNames(npmRoot)
+  const specs = []
+  for (const name of collectCoreDirectNames(npmRoot)) {
+    if (workspaceNames.has(name)) {
+      continue
+    }
+    if (fs.existsSync(packageDir(nodeModules, name))) {
+      continue
+    }
+    const version = versions.get(name)
+    specs.push(version ? `${name}@${version}` : name)
+  }
+  return specs
+}
+
+export function workspaceLinksMissing(npmRoot, nodeModules) {
+  for (const name of collectWorkspacePackageNames(npmRoot)) {
+    if (!fs.existsSync(packageDir(nodeModules, name))) {
+      return true
+    }
+  }
+  return false
 }
 
 export function collectKeepDirectNames(npmRoot, extraNames = []) {
@@ -246,15 +321,7 @@ export function writeModuleSpecsStamp(nodeModules, moduleDeps) {
 }
 
 export function isCoreTreeCurrent({ npmRoot, nodeModules }) {
-  if (!fs.existsSync(nodeModules)) {
-    return false
-  }
-
-  try {
-    if (fs.readdirSync(nodeModules).length === 0) {
-      return false
-    }
-  } catch {
+  if (nodeModulesIsEmpty(nodeModules)) {
     return false
   }
 

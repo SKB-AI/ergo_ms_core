@@ -156,6 +156,7 @@ client_build_skip_shell: "Оболочка ядра пропущена: этот
 client_build_skip_empty: "Сборка клиента пропущена: на этом хосте нет ни оболочки, ни federated remotes"
 client_build_nginx_reload: "Пересборка конфига nginx и reload после сборки клиента"
 client_build_skip_nginx_not_installed: "Reload nginx пропущен: portable nginx не установлен"
+client_build_drop_root: "Сборка идёт от владельца проекта, не от root"
 collectstatic_already_fresh_skip: "Статика уже собрана — collectstatic пропущен"
 git_submodules_local_ok: "Git submodules уже инициализированы (без --remote)"
 git_submodules_already_init_skip: "Git submodules уже инициализированы — update пропущен"

@@ -313,6 +313,10 @@ def rotate_infra_logs(root: Path, *, dry_run: bool = False, verbose: bool = Fals
 
     if verbose and not rotated_any:
         print(t('log_rotate_not_needed'))
+    if os.name != 'nt':
+        from lifecycle.host.privilege import restore_project_ownership
+
+        restore_project_ownership(root, resolve_logs_dir(root))
     return 0
 
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -92,6 +95,41 @@ class ServiceNameParityTests(unittest.TestCase):
             with self.subTest(script=script):
                 self.assertIn(script, self.nssm)
                 self.assertIn(script, self.systemd)
+
+    def test_app_units_take_user_from_project_owner(self) -> None:
+        self.assertIn('_systemd_project_user_block', self.systemd)
+        self.assertIn('user_block="$(_systemd_project_user_block', self.systemd)
+        self.assertIn('${user_block}\nEnvironmentFile=', self.systemd.replace('\r\n', '\n'))
+        self.assertNotIn('User=administrator', self.systemd)
+        self.assertNotIn('User=root', self.systemd)
+
+    @unittest.skipUnless(os.name != 'nt', 'Linux systemd unit generation')
+    def test_generated_api_unit_keeps_user_and_envfile_apart(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / 'logs').mkdir()
+            script = f'''
+LIB="{_DEPLOYMENT_DIR / 'linux' / 'lib'}"
+# shellcheck disable=SC1091
+source "$LIB/core.sh"
+# shellcheck disable=SC1091
+source "$LIB/systemd.sh"
+get_base_unit_definitions "{root}"
+printf '%s' "$API_UNIT"
+'''
+            result = subprocess.run(
+                ['bash', '-c', script],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            text = result.stdout
+            self.assertIn('\nUser=', text)
+            self.assertIn('\nGroup=', text)
+            self.assertIn('\nEnvironmentFile=', text)
+            self.assertNotIn('administratorEnvironmentFile', text)
+            self.assertNotRegex(text, r'User=\S+EnvironmentFile=')
 
     def test_infra_service_names_aligned(self) -> None:
         self.assertIn('Get-ErgoServiceName', self.services_ps1)

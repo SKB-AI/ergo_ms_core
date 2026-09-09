@@ -65,11 +65,12 @@ require_root_or_sudo() {
 }
 
 # portable-пакеты в virtual_env принадлежат владельцу корня, не root.
+# Имя пользователя не хардкодится: берём владельца корня проекта.
 restore_project_ownership() {
   local root="$1"
   local path="$2"
   [[ -e "$path" ]] || return 0
-  local owner group
+  local owner group foreign current
   owner="$(stat -c '%U' "$root" 2>/dev/null || true)"
   group="$(stat -c '%G' "$root" 2>/dev/null || true)"
   [[ -n "$owner" && "$owner" != "root" ]] || return 0
@@ -77,9 +78,13 @@ restore_project_ownership() {
     chown -R "$owner:$group" "$path"
     return 0
   fi
-  local current
-  current="$(stat -c '%U' "$path" 2>/dev/null || true)"
-  [[ "$current" == "$owner" ]] && return 0
+  if [[ -d "$path" ]]; then
+    foreign="$(find "$path" -xdev ! -user "$owner" -print -quit 2>/dev/null || true)"
+    [[ -z "$foreign" ]] && return 0
+  else
+    current="$(stat -c '%U' "$path" 2>/dev/null || true)"
+    [[ "$current" == "$owner" ]] && return 0
+  fi
   command -v sudo >/dev/null 2>&1 || return 1
   sudo chown -R "$owner:$group" "$path"
 }

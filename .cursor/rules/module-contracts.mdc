@@ -86,6 +86,7 @@ bridge.provideMany(HOST_SETTINGS_ADDITIONAL_PANELS_GROUP, '<provider>_panel', { 
 | `adp.filter_granted_role_group_ids` | event | Id RoleGroup, которые нельзя учитывать в глобальной агрегации ModulePermission | модуль |
 | `adp.session_scoped_module_permissions` | event | Доп. ModulePermission для текущего session-scope | модуль |
 | `adp.session_scoped_denied_permissions` | event | Вычитание пар `(module_name, permission_key)` из снимка прав текущего session-scope | модуль |
+| `menu.catalog` | group | Дерево пунктов sidebar модуля: `{module, module_source, items[], separators[]}`. Процесс модуля отдаёт JSON; ядро пишет в свои `MenuItem`. Папка `modules/<name>/` на ядре не нужна | процесс модуля (регистрация в `cms_adp.ready`) |
 | `menu.prepare_visibility` | event | Фильтр меню | модуль |
 | `menu.can_see_item` | event | Видимость пункта | модуль |
 | `core.user_delete` | event | Очистка при удалении user | подписчик в модуле |
@@ -157,7 +158,8 @@ JWT session claims **не зашиты в ядре** — их деклариру
 | `api/permission_catalog.py` | `importlib.import_module` по имени | ADP ([`permission_catalog.py`](../../core/api/src/core/cms/adp/services/permission_catalog.py)) | при module permissions |
 | `api/celery_config.py` | `CeleryModuleManager` ([`manager.py`](../../core/api/src/core/utils/celery/manager.py)) | [`config/celery.py`](../../core/api/src/config/celery.py) | при фоновых задачах |
 | `api/celery_beat_config.py` | celery-beat manager | beat | при периодических задачах |
-| `api/migrations/*_menu*.py` | `restore_menu` scan + `MenuMigrationHelper` | CMS-меню | при пункте sidebar |
+| `api/migrations/*_menu*.py` | процесс модуля → `menu.catalog`; на ядре `restore_menu` как запасной вариант | CMS-меню | при пункте sidebar |
+| `api/menu_catalog.py` | `export_menu_catalog()` — необязательная явная выгрузка вместо проигрывания миграций | CMS-меню | опционально |
 
 ### Клиент
 

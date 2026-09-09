@@ -122,6 +122,13 @@ def _rewrite_site_conf(root: Path) -> int:
     return cmd_render(root, template=template, output=output)
 
 
+def _restore_nginx_logs(root: Path) -> None:
+    from lifecycle.host.privilege import restore_project_ownership
+
+    restore_project_ownership(root, root / 'logs')
+    restore_project_ownership(root, root / 'virtual_env' / 'packages' / 'nginx')
+
+
 def cmd_reload(root: Path) -> int:
     if not _nginx_installed(root):
         print(format_console('error', t('nginx_not_installed_hint')), file=sys.stderr)
@@ -151,12 +158,14 @@ def cmd_reload(root: Path) -> int:
             reload_cmd = [*sudo_prefix, 'systemctl', 'reload', NGINX_LINUX_SERVICE]
             subprocess.run(reload_cmd, check=False)
             print(format_console('ok', t('nginx_reloaded')))
+            _restore_nginx_logs(root)
             return 0
         print(format_console('info', t('reloading_nginx')))
         start_cmd = [*sudo_prefix, 'systemctl', 'start', NGINX_LINUX_SERVICE]
         started = subprocess.run(start_cmd, check=False)
         if started.returncode == 0:
             print(format_console('ok', t('nginx_reloaded')))
+            _restore_nginx_logs(root)
             return 0
 
     print(format_console('info', t('reloading_nginx')))
@@ -166,6 +175,7 @@ def cmd_reload(root: Path) -> int:
         check=False,
     )
     print(format_console('ok', t('nginx_reloaded')))
+    _restore_nginx_logs(root)
     return 0
 
 

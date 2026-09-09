@@ -23,6 +23,9 @@ import { getRelativeTime, formatDateTime } from '@/js/utils/timeUtils.js'
 | Диапазон дат | `formatDateRange`, `formatDateRangeShort`, `formatMonthRange` |
 | Длительность в днях («21 день») | `formatDurationDays` |
 | Ключ YYYY-MM → «Март 2026» | `formatYearMonthKeyRu` |
+| Месяц и год («Сентябрь 2026 г.») | `formatMonthYear` |
+| День недели («Понедельник» / «Пн») | `formatWeekday` |
+| Список дней недели с понедельника | `getWeekdayNames` |
 | День недели и дата | `formatWeekdayDate` |
 | Месяц и год («с июня 2026 г.») | `formatMonthYearGenitive` |
 | Имя месяца по номеру 1–12 | `getMonthNameByNumber` |

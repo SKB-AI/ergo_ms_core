@@ -1,4 +1,4 @@
-"""Повышение привилегий на Linux (sudo re-exec)."""
+"""Повышение привилегий на Linux (sudo re-exec) и возврат владельца проекта."""
 
 from __future__ import annotations
 
@@ -7,6 +7,30 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+# Артефакты, которые sudo / служба без User= часто оставляют у root.
+RUNTIME_ARTIFACT_RELATIVE = (
+    'virtual_env/packages/redis',
+    'virtual_env/packages/nginx',
+    'virtual_env/packages/postgres',
+    'virtual_env/client-remotes',
+    'virtual_env/npm',
+    'virtual_env/cache',
+    'virtual_env/celery',
+    'core/client/node_modules',
+    'core/client/dist',
+    'logs',
+    'core/deployment/wrappers',
+)
+
+CLIENT_BUILD_ARTIFACT_RELATIVE = (
+    'core/client/dist',
+    'core/client/node_modules',
+    'virtual_env/client-remotes',
+    'virtual_env/npm',
+    'virtual_env/cache',
+    'logs',
+)
 
 
 def is_root() -> bool:
@@ -42,6 +66,28 @@ def reexec_with_sudo(argv: list[str], *, cwd: Path | None = None) -> int:
 def project_owner_ids(root: Path) -> tuple[int, int]:
     st = Path(root).stat()
     return st.st_uid, st.st_gid
+
+
+def drop_to_project_owner(root: Path) -> bool:
+    """Если процесс root — перейти на uid/gid владельца корня, без имени в коде."""
+    if os.name == 'nt' or not hasattr(os, 'geteuid') or os.geteuid() != 0:
+        return False
+    uid, gid = project_owner_ids(root)
+    if uid == 0:
+        return False
+    try:
+        import pwd
+
+        pw = pwd.getpwuid(uid)
+        os.environ['HOME'] = pw.pw_dir
+        os.environ['USER'] = pw.pw_name
+        os.environ['LOGNAME'] = pw.pw_name
+        os.initgroups(pw.pw_name, gid)
+    except KeyError:
+        pass
+    os.setgid(gid)
+    os.setuid(uid)
+    return True
 
 
 def _chown_tree(path: Path, uid: int, gid: int) -> None:
@@ -97,19 +143,17 @@ def restore_project_ownership(root: Path, path: Path) -> bool:
     return result.returncode == 0
 
 
-# Артефакты, которые sudo-установка часто оставляет у root.
-_RUNTIME_ARTIFACT_RELATIVE = (
-    'virtual_env/packages/redis',
-    'virtual_env/packages/nginx',
-    'virtual_env/packages/postgres',
-    'core/client/node_modules',
-    'logs',
-    'core/deployment/wrappers',
-)
+def restore_paths_ownership(root: Path, relatives: tuple[str, ...]) -> None:
+    project = Path(root)
+    for relative in relatives:
+        restore_project_ownership(project, project / relative)
 
 
 def restore_runtime_artifact_ownership(root: Path) -> None:
     """Вернуть типичные runtime-артефакты владельцу проекта (кэш Vite, пакеты, логи)."""
-    project = Path(root)
-    for relative in _RUNTIME_ARTIFACT_RELATIVE:
-        restore_project_ownership(project, project / relative)
+    restore_paths_ownership(root, RUNTIME_ARTIFACT_RELATIVE)
+
+
+def restore_client_build_ownership(root: Path) -> None:
+    """Сборка клиента и логи после неё принадлежат владельцу корня, не root."""
+    restore_paths_ownership(root, CLIENT_BUILD_ARTIFACT_RELATIVE)

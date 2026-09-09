@@ -87,7 +87,7 @@ modules/<имя>/
 | LayoutPlugin | `layout.plugin_registry` | [`layoutPluginRegistry.js`](../../core/client/src/integrations/layoutPluginRegistry.js) |
 | Session-scope | `session_scope.module_context` | [`sessionScopedModuleContext.js`](../../core/client/src/integrations/sessionScopedModuleContext.js) |
 | Claims при логине | `session.restore_claims` | [`views_auth.py`](../../core/api/src/core/cms/adp/views_auth.py) |
-| Меню CMS | миграции меню | [`restore_menu.py`](../../core/api/src/core/cms/management/commands/restore_menu.py) |
+| Меню CMS | миграции меню + `menu.catalog` | [`restore_menu.py`](../../core/api/src/core/cms/management/commands/restore_menu.py) |
 | resource-usage | `process_roles.yaml` | [`process-roles.mdc`](process-roles.mdc) |
 | Celery balance | `task_footprint.yaml` | [`celery-balance.mdc`](celery-balance.mdc) |
 | OS-службы | `host_lifecycle.yaml` | [`host-lifecycle.mdc`](host-lifecycle.mdc) |
@@ -169,7 +169,7 @@ class MyModuleConfig(AppConfig):
 
 **Модульные темы** — только hook `client/js/theme-defaults.js` + `POST settings/themes/sync-module-defaults/`; в ядре **нет** builtin-палитр модулей.
 
-Пункты бокового меню — **миграция API** (`MenuMigrationHelper`, эталон `modules/<name>/api/migrations/*_add_menu.py`); маршруты — `client/js/routes.js`. Порядок и видимость — в CMS. Подробности: [`menu.mdc`](menu.mdc).
+Пункты бокового меню — **миграция API** (`MenuMigrationHelper`, эталон `modules/<name>/api/migrations/*_add_menu.py`); маршруты — `client/js/routes.js`. Процесс модуля отдаёт дерево через `menu.catalog`, ядро пишет его в свои таблицы. Порядок и видимость — в CMS. Подробности: [`menu.mdc`](menu.mdc).
 
 Пункты выпадающего меню пользователя в шапке (`UserMenu`) — через `bridge.provideMany` в группе `header.userMenu.items`. Эталон: `modules/<name>/client/js/headerUserMenu.js`, подключается из `integrations.js`. Сбор в ядре — [`headerUserMenu.js`](../../core/client/src/integrations/headerUserMenu.js). Это **не** боковое меню: sidebar — миграции API, шапка — ModuleBridge. Иконка — строка Lucide PascalCase (`icon: 'Building2'`), не Vue-компонент — [`icons.mdc`](icons.mdc).
 

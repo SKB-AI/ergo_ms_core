@@ -216,13 +216,10 @@ class ClientBuildStep(DeploymentStep):
             print(format_console('skip', t('client_build_already_fresh_skip')))
             return StepResult()
         print(format_console('info', t('building_client')))
-        if plan.shell and ctx.platform != HostPlatform.WIN32:
-            from lifecycle.host.privilege import restore_project_ownership
+        if ctx.platform != HostPlatform.WIN32:
+            from lifecycle.host.privilege import restore_client_build_ownership
 
-            restore_project_ownership(
-                ctx.project_root,
-                ctx.project_root / 'core' / 'client' / 'node_modules',
-            )
+            restore_client_build_ownership(ctx.project_root)
         code = host_ops.run_python_script(
             ctx,
             'core/deployment/scripts/client_build.py',

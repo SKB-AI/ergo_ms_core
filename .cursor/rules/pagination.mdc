@@ -74,6 +74,8 @@ Props `Pagination`: `modelValue`, `totalPages`, `totalItems`, `pageSize`, `visib
 
 Props пагинации `DataTable`: `enablePagination`, `currentPage`, `itemsPerPage`, `totalItems`, `hasNextPage`, `hasPreviousPage`.
 
+Сортировка по колонке: `sortable: true` в описании колонки, плюс `sortKey` / `sortDirection` и события `update:sortKey` / `update:sortDirection`. Клик по заголовку переключает направление; на карточках те же поля вынесены полосой над списком. Саму сортировку списка делает страница, `DataTable` только показывает состояние и клики.
+
 ## Связанные правила
 
 | Тема | Файл |
