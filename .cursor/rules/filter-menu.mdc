@@ -90,7 +90,7 @@ const filterFields = computed(() => [
 | `type` | Назначение |
 |--------|------------|
 | `heading` | Подзаголовок группы (`label`), не интерактивный |
-| `select` | Flyout со списком; props как у SelectBox: `options`, `valueKey`, `labelKey`, `includeAllOption`, `allLabel`, `searchable` |
+| `select` | Flyout со списком; props как у SelectBox: `options`, `valueKey`, `labelKey`, `includeAllOption`, `allLabel`, `searchable`, `defaultValue` |
 | `date` | Flyout с `DatePicker` (`YYYY-MM-DD`) |
 
 Обязательные поля интерактивного пункта: `type`, `key`, `label`.
@@ -101,7 +101,7 @@ const filterFields = computed(() => [
 |------|--------------|--------|
 | `modelValue` | `{}` | объект фильтров |
 | `fields` | `[]` | схема меню |
-| `triggerLabel` | `'Фильтры'` | текст кнопки; при активных фильтрах — «Фильтры (N)» |
+| `triggerLabel` | `'Фильтры'` | текст кнопки; при активных фильтрах — «Фильтры (N)». Значение поля, равное `defaultValue`, в счётчик не входит |
 | `applyOnChange` | `true` | `@apply` сразу после изменения |
 | `label` | `''` | подпись над триггером |
 | `disabled` | `false` | блокировка |

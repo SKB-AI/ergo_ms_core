@@ -193,6 +193,8 @@ _nginx_write_main_conf() {
   include_path="$site_conf"
 
   mkdir -p "$nginx_dir/conf" "$runtime_logs_dir" "$temp_dir" "$central_logs_dir"
+  mkdir -p "$temp_dir/proxy" "$temp_dir/client_body" "$temp_dir/fastcgi" "$temp_dir/uwsgi" "$temp_dir/scgi"
+  chmod 1777 "$temp_dir/proxy" "$temp_dir/client_body" "$temp_dir/fastcgi" "$temp_dir/uwsgi" "$temp_dir/scgi" || true
 
   cat >"$main_conf" <<EOF
 worker_processes auto;
