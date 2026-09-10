@@ -337,7 +337,7 @@ import { MoreHorizontal, Edit, Trash2 } from '@lucide/vue'
 
 Компоненты: [`DocumentViewer.vue`](../../core/client/src/components/DocumentViewer.vue), [`DocumentViewerModal.vue`](../../core/client/src/components/DocumentViewerModal.vue). Файл грузится через `fetchMediaBlob` из [`mediaPreview.js`](../../core/client/src/js/utils/mediaPreview.js), не через iframe `/serve/` (`X-Frame-Options: DENY`).
 
-PDF — `pdfjs-dist` (worker из бандла). DOCX — `docx-preview`. Старый `.doc`, таблицы и архивы — кнопка «Скачать». Компонент подключай через `defineAsyncComponent`.
+PDF — `pdfjs-dist` (worker из бандла). DOCX — `docx-preview`. Старый `.doc`, таблицы и архивы — кнопка «Скачать». Компонент подключай через `defineAsyncComponent`. На панели PDF: масштаб, книжная/альбомная ориентация, показ 1 / 2 / 4 страниц.
 
 ```vue
 <script setup>
