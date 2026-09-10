@@ -122,11 +122,24 @@ def _rewrite_site_conf(root: Path) -> int:
     return cmd_render(root, template=template, output=output)
 
 
+def _ensure_nginx_temp_writable(root: Path) -> None:
+    """Worker nginx (часто nobody) пишет spill в temp/; 0700 владельца корня это ломает."""
+    temp = Path(root) / 'virtual_env' / 'packages' / 'nginx' / 'temp'
+    for name in ('proxy', 'client_body', 'fastcgi', 'uwsgi', 'scgi'):
+        path = temp / name
+        path.mkdir(parents=True, exist_ok=True)
+        try:
+            path.chmod(0o1777)
+        except OSError:
+            pass
+
+
 def _restore_nginx_logs(root: Path) -> None:
     from lifecycle.host.privilege import restore_project_ownership
 
     restore_project_ownership(root, root / 'logs')
     restore_project_ownership(root, root / 'virtual_env' / 'packages' / 'nginx')
+    _ensure_nginx_temp_writable(root)
 
 
 def cmd_reload(root: Path) -> int:

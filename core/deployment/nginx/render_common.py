@@ -454,6 +454,8 @@ def build_host_media_locations() -> str:
         limit_req_status 429;
         limit_conn ergo_conn 30;
         limit_conn_status 429;
+        proxy_buffering off;
+        gzip off;
         proxy_pass http://ergo_media;
     }
 
@@ -517,6 +519,8 @@ def build_docker_core_proxy_locations() -> str:
         limit_req_status 429;
         limit_conn ergo_conn 30;
         limit_conn_status 429;
+        proxy_buffering off;
+        gzip off;
         proxy_pass http://ergo_media;
     }}
 

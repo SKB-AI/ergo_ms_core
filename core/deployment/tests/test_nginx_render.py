@@ -432,6 +432,7 @@ class ModuleNginxTests(unittest.TestCase):
         self.assertIn('location ^~ /serve/demo_mod/', block)
         self.assertIn('proxy_pass http://ergo_media/upload/;', block)
         self.assertIn('proxy_pass http://ergo_media;', block)
+        self.assertIn('proxy_buffering off;', block)
         self.assertNotIn('ergo_media_modules', block)
 
     def test_module_media_prefixes_go_to_peer(self) -> None:
