@@ -1,5 +1,5 @@
 ---
-description: Аудит действий — запись через мост, автоаудит CRUD, каталог действий
+description: Аудит действий — запись через мост, автоаудит CRUD, каталог действий, журнал отмен (undo.performed)
 alwaysApply: false
 ---
 # Журнал действий (аудит)
@@ -9,7 +9,16 @@ alwaysApply: false
 события. Инициатор, IP, User-Agent, scope (измерения) и request_id подставляет
 ядро автоматически из контекста запроса.
 
-Смотреть журнал: админ-панель → «Журнал действий» (только глобальный админ).
+Смотреть журнал: админ-панель → «Журнал действий» (глобальный админ и те, кому разрешает
+`audit.can_read` в scope). Три вкладки:
+
+| Вкладка | Содержимое |
+|---|---|
+| Действия пользователей | все события **кроме** отмен (`exclude_actions=undo.performed,theme.undone`) |
+| Сессии веб-клиента | client monitor |
+| Хранение отмен | только отмены (`actions=undo.performed,theme.undone`) |
+
+Отмены **не дублируются** в первой вкладке — только в «Хранение отмен».
 Файл: `logs/audit.log` — каждая успешная запись дублируется строкой (см. [`logging.mdc`](logging.mdc));
 отключить: `AUDIT_LOG_FILE_ENABLED=false`.
 
@@ -112,6 +121,80 @@ bridge.provide_many(AUDIT_SCOPE_DIMENSIONS_GROUP, 'project', {
 - Платформенные измерения scope регистрирует модуль-владелец scope.
 - Список измерений для UI: `GET .../audit/dimensions/`.
 
+## Журнал отмен (toast Undo)
+
+Отмена действия в UI (кнопка «Отменить» во всплывающем уведомлении) — **отдельный тип**
+события, не дублируй исходное действие (`theme.updated` и т.п.).
+
+Pending-отмена существует **только** пока виден toast (таймер **10** с). Отдельной панели
+«неотменённые действия» нет. По таймауту / закрытию без отмены стек группы сбрасывается;
+в журнал попадает только **успешно выполненная** отмена (`undo.performed`). Подробности стека
+и batch — [`client_code.mdc`](client_code.mdc).
+
+### Действие и API
+
+- Ключ: `undo.performed` (каталог ядра, категория «Отмены изменений»).
+- Устаревшее: `theme.undone` — старые записи; новые отмены **не** пишут через него.
+- Эндпоинт: `POST .../audit/events/record-undo/` — только `IsAuthenticated`;
+  инициатор всегда текущий пользователь (подделать actor нельзя).
+- Тело: `kind`, `label` (обяз.), `entity_label`, `entity_type`, `entity_ref`,
+  `source_module` (из каталога модулей), `meta` (опц.).
+
+Формат `kind`: `[a-z][a-z0-9_.-]{0,63}`, например `theme.set_default`, `<name>.item.restore`.
+
+Подпись в таблице строится в сериализаторе:
+- `theme.*` → «Отмена изменения темы: {undo_label}»;
+- прочие → «Отмена: {undo_label}»;
+- fallback — label из каталога (`catalog.find_action_spec` ищет по модулю источника,
+  затем по всем секциям).
+
+### Клиент
+
+```javascript
+import { showUndoableSuccess } from '@/js/utils/toast.js'
+import { reportUndo } from '@/core/audit/js/reportUndo.js'
+
+showUndoableSuccess(tGlobal('common.saved'), {
+  onUndo: async () => { /* откат на API */ },
+  undoAudit: {
+    kind: '<name>.item.restore',
+    label: tGlobal('myModule.undoKinds.restore'),
+    entityLabel: item.name,
+    entityType: 'item',
+    entityRef: item.public_id,
+    sourceModule: '<name>',
+  },
+  group: 'myModule.itemStatus',   // опц.: стек отмен на группу
+  kind: '<name>.item.restore',    // опц.: batch «Отменить все»
+  stackMax: clientEnv.toastUndoStackMax,
+  batchUndo: async (oldestEntry) => { /* откат к baseline */ },
+})
+```
+
+После **успешного** `onUndo` запись в журнал делает `showUndoableSuccess` сам (если передан
+`undoAudit`). Вручную — `reportUndo(...)` (fire-and-forget, не блокирует UI).
+
+Эталон доменного payload для тем: `themeUndoAudit()` в
+`core/client/src/core/cms/adp/settings/themeEditor/themeUndoAudit.js`.
+
+**Запрещено:** отдельные эндпоинты «record-undo» в доменных ViewSet (например themes) —
+только центральный `audit/events/record-undo/`.
+**Запрещено:** UI-панель pending-отмен как дубль toast/журнала — отмена только из toast;
+история выполненных отмен — вкладка «Хранение отмен».
+
+### Фильтры списка событий
+
+Query-параметры `GET .../audit/events/`:
+
+| Параметр | Назначение |
+|---|---|
+| `actions` | включить только перечисленные (`undo.performed,theme.undone`) |
+| `exclude_actions` | исключить перечисленные (основная вкладка журнала) |
+| `action` | одно действие (если `actions` не задан) |
+
+`AuditLogPanel` принимает `fixedFilters` с `actions` или `exclude_actions`
+(см. `AuditLog.vue`).
+
 ## Правила именования действий
 
 - Формат `action`: `<модуль>.<объект>.<действие>`, например `<name>.item.status_changed`.
@@ -131,6 +214,11 @@ bridge.provide_many(AUDIT_SCOPE_DIMENSIONS_GROUP, 'project', {
 - Свой UI журнала в модуле. Нужен встроенный виджет «история объекта» — фильтруй
   центральный API по `entity_type` + `entity_ref`, не копируй страницу.
 - Логировать в аудит шум (каждый GET, служебные модели) — только значимые действия.
+- Писать отмены отдельным доменным `action` (`theme.undone`, `<name>.cancelled`) вместо
+  `undo.performed` — используй центральный `record-undo` и `undoAudit` на клиенте.
+- Дублировать отмены в основной вкладке журнала — они только на «Хранение отмен».
+- Держать pending-отмены вне toast (отдельная панель / localStorage) — стек живёт в toast
+  и сбрасывается по таймауту; история — только выполненные `undo.performed`.
 
 ## Где что
 
@@ -144,6 +232,11 @@ bridge.provide_many(AUDIT_SCOPE_DIMENSIONS_GROUP, 'project', {
 | Контекст (actor/ip/scope) | `core/api/src/core/audit/context.py` (middleware) |
 | Файл `logs/audit.log` | `core/api/src/core/audit/service.py` → `log_audit_event` |
 | UI (только ядро) | `core/client/src/core/cms/adp/admin/AuditLog.vue` |
+| Панель таблицы, `fixedFilters` | `core/client/src/core/audit/components/AuditLogPanel.vue` |
+| Запись отмен с клиента | `core/client/src/core/audit/js/reportUndo.js` |
+| Стек отмен (toast, in-memory) | `core/client/src/js/utils/undoRegistry.js` + `showUndoableSuccess` в `toast.js` |
+| `POST record-undo` | `core/api/src/core/audit/views.py` → `AuditEventViewSet.record_undo` |
+| Подписи действий (fallback каталога) | `core/api/src/core/audit/catalog.py` → `find_action_spec` |
 | Фильтр инициаторов | `GET .../audit/events/actors/` (отдельно от catalog — для 3G) |
 
 ## Связанные правила
@@ -151,6 +244,7 @@ bridge.provide_many(AUDIT_SCOPE_DIMENSIONS_GROUP, 'project', {
 | Тема | Файл |
 |---|---|
 | Уведомления (тот же паттерн моста) | [`notifications.mdc`](notifications.mdc) |
+| Toast и `showUndoableSuccess` | [`client_code.mdc`](client_code.mdc) |
 | Безопасность, public_id вместо pk | [`security.mdc`](security.mdc) |
 | Мост между модулями | [`modules.mdc`](modules.mdc) |
 | Глобальный админ | [`global-admin.mdc`](global-admin.mdc) |

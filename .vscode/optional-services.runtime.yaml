@@ -1,0 +1,6 @@
+# Сгенерировано sync_vscode_logs_services.py — не редактировать вручную.
+# Источник: ERGO_PROXY / ERGO_BROKER из .env (порядок: Redis → client/nginx)
+
+services:
+  client:
+    description: "Vue.js client dev server"
