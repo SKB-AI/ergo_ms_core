@@ -366,7 +366,7 @@ const showViewer = ref(false)
 |------|-------|
 | `src` | подписанный URL media_api |
 | `filename` | имя файла для типа и скачивания |
-| `compact` | ниже панель на карточке |
+| `compact` | ниже панель; без переключения ориентации и числа страниц |
 | `showToolbar` | `false` — без панели масштаба и страниц |
 
 Модалка: `visible`, `src`, `filename`, `title`, `modalId`.
